@@ -29,6 +29,7 @@ contract Vesting is Ownable, Pausable {
 
     event TokensReleased(address beneficiary, uint256 amount);
     event VestingScheduleCreated(address beneficiary, uint256 totalTokens, uint256 startTime);
+    event VestingScheduleUpdated(address beneficiary, uint256 totalTokens);
 
     constructor(address _token) {
         token = IERC20(_token);
@@ -39,23 +40,28 @@ contract Vesting is Ownable, Pausable {
         onlyWhitelisted
         whenNotPaused
     {
+        require(vestingSchedulesActive[msg.sender] == true, "Vesting schedule not active");
         require(totalTokens > 0, "Total tokens must be greater than zero");
         require(releasePeriod > 0, "Release period must be greater than zero");
         require(
-            vestingSchedules[msg.sender][beneficiary].totalTokens == 0,
-            "Vesting schedule already exists for the beneficiary"
+            vestingSchedules[msg.sender][beneficiary].releasedTokens == 0,
+            "Vesting schedule already in use, for the beneficiary"
         );
-
         VestingSchedule storage schedule = vestingSchedules[msg.sender][beneficiary];
-        schedule.totalTokens = totalTokens;
-        schedule.releasePeriod = releasePeriod;
-        schedule.startTime = startTime == 0 ? block.timestamp : startTime;
+        if(vestingSchedules[msg.sender][beneficiary].totalTokens == 0) {
+            schedule.totalTokens = totalTokens;
+            schedule.releasePeriod = releasePeriod;
+            schedule.startTime = startTime == 0 ? block.timestamp : startTime;
+            emit VestingScheduleCreated(beneficiary, schedule.totalTokens, schedule.startTime);
+        } else {
+            schedule.totalTokens = schedule.totalTokens.add(totalTokens);
+            emit VestingScheduleUpdated(beneficiary, totalTokens);
+        }
 
-        emit VestingScheduleCreated(beneficiary, totalTokens, startTime);
     }
 
     function releaseTokens(address contractAddress, address beneficiary) external whenNotPaused {
-        require(vestingSchedulesActive[contractAddress] == true, "Vesting schedule not active.");
+        require(vestingSchedulesActive[contractAddress] == true, "Vesting schedule not active");
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         uint256 releasableTokens = getReleasableTokens(contractAddress, beneficiary);
         require(releasableTokens > 0, "No tokens available for release");

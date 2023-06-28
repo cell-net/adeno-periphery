@@ -30,12 +30,12 @@ contract PrivateSale is Ownable {
     }
 
     modifier onlySaleEnd() {
-        require(isSaleEnd, "Sale not end");
+        require(isSaleEnd, "Sale has not ended");
         _;
     }
 
     modifier onlySaleNotEnd() {
-        require(!isSaleEnd, "Sale ended");
+        require(!isSaleEnd, "Sale has ended");
         _;
     }
 
@@ -44,7 +44,7 @@ contract PrivateSale is Ownable {
         onlyOwner
         onlySaleNotEnd
     {
-        require(recipients.length == amounts.length, "Recipients and amounts not match.");
+        require(recipients.length == amounts.length, "Recipients and amounts do not match");
         for (uint256 i = 0; i < recipients.length; i++) {
             address recipient = recipients[i];
             uint256 amount = amounts[i];
