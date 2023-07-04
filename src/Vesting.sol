@@ -57,7 +57,10 @@ contract Vesting is Ownable, Pausable {
             schedule.totalTokens = schedule.totalTokens.add(totalTokens);
             emit VestingScheduleUpdated(beneficiary, totalTokens);
         }
+    }
 
+    function removeVestingSchedule(address contractAddress, address beneficiary) external whenNotPaused {
+        delete vestingSchedules[contractAddress][beneficiary];
     }
 
     function releaseTokens(address contractAddress, address beneficiary) external whenNotPaused {

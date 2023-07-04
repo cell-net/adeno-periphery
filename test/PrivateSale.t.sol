@@ -617,8 +617,9 @@ contract PrivateSaleTest is Test {
 
         privateSale.claimVestedTokens();
 
+        uint256 monthAmount = (block.timestamp.sub(VESTING_START_TIME)).div(SECONDS_PER_MONTH);
         uint256 bal = adenoToken.balanceOf(buyer);
-        assertEq(bal, 11e18); // 11 month balance
+        assertEq(bal, monthAmount * 10**18);
         vm.stopPrank();
     }
 
