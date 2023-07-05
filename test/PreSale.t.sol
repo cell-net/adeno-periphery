@@ -469,6 +469,9 @@ contract PreSaleTest is Test {
         assertEq(startTime, VESTING_START_TIME);
         assertEq(releasedToken, 0);
         preSale.setSaleEnd();
+        vm.expectRevert("Ownable: caller is not the owner");
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.withdrawFunds();
         preSale.withdrawFunds();
         uint256 bal = usdc.balanceOf(address(this));
         assertEq(bal, 1000e6 + (amount*TOKEN_PRICE));
