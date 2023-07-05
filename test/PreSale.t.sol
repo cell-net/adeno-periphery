@@ -37,7 +37,8 @@ contract PreSaleTest is Test {
     // vesting duration = 12 months:
     uint256 private VESTING_DURATION = 12;
     uint256 private VESTING_START_TIME = 1656633599;
-    IUSDC usdc = IUSDC(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    address usdcAddress = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    IUSDC usdc = IUSDC(usdcAddress);
 
     function setUp() public {
         vm.warp(VESTING_START_TIME);
@@ -45,10 +46,10 @@ contract PreSaleTest is Test {
         adenoToken.mint(address(this), 236250000e18);
         vesting = new Vesting(address(adenoToken));
 
-        preSale = new PreSale(address(vesting), address(adenoToken), TOKEN_AMOUNT, TOKEN_PRICE, VESTING_DURATION, VESTING_START_TIME);
+        preSale = new PreSale(address(vesting), usdcAddress, TOKEN_AMOUNT, TOKEN_PRICE, VESTING_DURATION, VESTING_START_TIME);
         // sell 1000 tokens for 1 eth each
 
-        preSale2 = new PreSale(address(vesting), address(adenoToken), TOKEN_AMOUNT, TOKEN_PRICE, VESTING_DURATION, VESTING_START_TIME);
+        preSale2 = new PreSale(address(vesting), usdcAddress, TOKEN_AMOUNT, TOKEN_PRICE, VESTING_DURATION, VESTING_START_TIME);
 
         address[] memory whiteListAddr = new address[](5);
         whiteListAddr[0] = address(this);

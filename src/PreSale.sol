@@ -10,16 +10,13 @@ contract PreSale is Ownable {
     using SafeMath for uint256;
 
     Vesting public vestingContract;
-    IERC20 public token;
+    IERC20 public erc20Token;
     bool public isSaleEnd;
-
     uint256 public tokenPrice;
     uint256 public maxTokensToSell;
     uint256 public remainingTokens;
     uint256 public duration;
     uint256 public vestingStartDate;
-
-    IERC20 public usdcToken = IERC20(address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48));
 
     mapping(address => uint256) public vestedAmount;
     mapping(address => bool) public whitelist;
@@ -27,12 +24,12 @@ contract PreSale is Ownable {
     event TokensPurchased(address buyer, uint256 amount);
     event TokensClaimed(address beneficiary, uint256 amount);
 
-    constructor(address _vestingContract, address _token, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _vestingDuration, uint256 _vestingStartDate) {
+    constructor(address _vestingContract, address _erc20TokenContract, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _vestingDuration, uint256 _vestingStartDate) {
         vestingContract = Vesting(_vestingContract);
-        token = IERC20(_token);
-        tokenPrice = _tokenPrice; // This is the price of Adeno in 'USDC bits'. Keep in mind, USDC has 6 decimal places
+        tokenPrice = _tokenPrice; // This is the price of Adeno in 'token bits'
         duration = _vestingDuration;
         vestingStartDate = _vestingStartDate;
+        erc20Token = IERC20(_erc20TokenContract);
 
         maxTokensToSell = _maxTokensToSell;
         remainingTokens = _maxTokensToSell;
@@ -62,9 +59,9 @@ contract PreSale is Ownable {
         require(remainingTokens >= _numberOfTokens, "Insufficient tokens available for sale");
         require(duration > 0, "Duration must be greater than zero");
 
-        uint256 allowance = usdcToken.allowance(msg.sender, address(this));
+        uint256 allowance = erc20Token.allowance(msg.sender, address(this));
         require(allowance >= _numberOfTokens.mul(tokenPrice), "Check the token allowance");
-        bool success = usdcToken.transferFrom(msg.sender, address(this), _numberOfTokens.mul(tokenPrice));
+        bool success = erc20Token.transferFrom(msg.sender, address(this), _numberOfTokens.mul(tokenPrice));
         require(success, "Transaction was not successful");
 
         vestedAmount[msg.sender] = vestedAmount[msg.sender].add(_numberOfTokens);
@@ -105,7 +102,7 @@ contract PreSale is Ownable {
         require(totalTokens != 0);
         require(releasedTokens == 0);
         vestingContract.removeVestingSchedule(address(this), _buyer);
-        require(usdcToken.transfer(_buyer, (totalTokens.div(10**18)).mul(tokenPrice)));
+        require(erc20Token.transfer(_buyer, (totalTokens.div(10**18)).mul(tokenPrice)));
     }
 
     function addToWhitelist(address[] calldata addresses) external onlyOwner {
@@ -127,6 +124,6 @@ contract PreSale is Ownable {
     }
 
     function withdrawFunds() external onlySaleEnd onlyOwner {
-        require(usdcToken.transfer(msg.sender, usdcToken.balanceOf(address(this))));
+        require(erc20Token.transfer(msg.sender, erc20Token.balanceOf(address(this))));
     }
 }
