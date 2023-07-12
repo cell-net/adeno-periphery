@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import {Adeno} from "adenotoken/Adeno.sol";
 import {Vesting} from "../src/Vesting.sol";
 import {PreSale} from "../src/PreSale.sol";
 import {console} from "forge-std/console.sol";
-import "openzeppelin/utils/math/SafeMath.sol";
+import "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 interface IUSDC {
     function balanceOf(address account) external view returns (uint256);
@@ -18,8 +18,6 @@ interface IUSDC {
 }
 
 contract PreSaleTest is Test {
-    using SafeMath for uint256;
-
     Adeno public adenoToken;
     Vesting public vesting;
 
@@ -32,13 +30,16 @@ contract PreSaleTest is Test {
     uint256 private _timeNow;
     uint8 _vestingScheduleMonth;
     uint256 private SECONDS_PER_MONTH;
-    uint256 private TOKEN_PRICE = 40000; // Price is measured in USDC token bits, i.e., if price is 1000000, then 1 Adeno costs 1 USDC. 40000 USDCbits = 0.04 USDC
-    uint256 private TOKEN_AMOUNT = 10000e18;
+    uint256 private TOKEN_USDC_PRICE = 40000; // Price is measured in USDC token bits, i.e., if price is 1000000, then 1 Adeno costs 1 USDC. 40000 USDCbits = 0.04 USDC
+    uint256 private TOKEN_USD_ETH_PRICE = 4000000; // This is equivalent to $0.04.
+    uint256 private TOKEN_AMOUNT = 10_000_000_000_000_000e18;
     // vesting duration = 12 months:
     uint256 private VESTING_DURATION = 12;
     uint256 private VESTING_START_TIME = 1656633599;
     address usdcAddress = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    address chainlinkAddress = address(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
     IUSDC usdc = IUSDC(usdcAddress);
+    AggregatorV3Interface private aggregator = AggregatorV3Interface(chainlinkAddress);
 
     function setUp() public {
         vm.warp(VESTING_START_TIME);
@@ -46,10 +47,10 @@ contract PreSaleTest is Test {
         adenoToken.mint(address(this), 236250000e18);
         vesting = new Vesting(address(adenoToken));
 
-        preSale = new PreSale(address(vesting), usdcAddress, TOKEN_AMOUNT, TOKEN_PRICE, VESTING_DURATION, VESTING_START_TIME);
+        preSale = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, VESTING_START_TIME);
         // sell 1000 tokens for 1 eth each
 
-        preSale2 = new PreSale(address(vesting), usdcAddress, TOKEN_AMOUNT, TOKEN_PRICE, VESTING_DURATION, VESTING_START_TIME);
+        preSale2 = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, VESTING_START_TIME);
 
         address[] memory whiteListAddr = new address[](5);
         whiteListAddr[0] = address(this);
@@ -73,20 +74,19 @@ contract PreSaleTest is Test {
         // allow this test contract to mint USDC
         usdc.configureMinter(address(this), type(uint256).max);
         // mint $1000 USDC to the test contract (or an external user)
-        usdc.mint(address(this), 1000e6);
         usdc.mint(_buyer, 1000e6);
         usdc.mint(_buyer2, 1000e6);
-        uint256 balance = usdc.balanceOf(address(this));
+        uint256 balance = usdc.balanceOf(_buyer);
         assertEq(balance, 1000e6);
         hoax(_buyer, TOKEN_AMOUNT);
         usdc.approve(address(preSale), 0);
     }
 
-    function testPurchaseTokens() public {
+    function testPurchaseTokensWithUSDC() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
@@ -97,19 +97,30 @@ contract PreSaleTest is Test {
         assertEq(releasedToken, 0);
     }
 
-    // function testPurchaseTokensInsufficientEth() public {
-    //     uint256 amount = 10e18;
+    function testReceivedFromMultipleBuyersUSDC() public {
+        uint256 amount = 2000;
+        hoax(_buyer, TOKEN_AMOUNT);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokens(amount);
 
-    //     hoax(_buyer, TOKEN_AMOUNT);
-    //     vm.expectRevert("The value sent doesn't match the number of tokens being purchased");
-    //     preSale.purchaseTokens{value: amount-2}(amount);
-    // }
+        uint256 amount2 = 5000;
+        hoax(_buyer2, TOKEN_AMOUNT);
+        usdc.approve(address(preSale), amount2*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer2, address(preSale)), amount2*TOKEN_USDC_PRICE);
+        hoax(_buyer2, TOKEN_AMOUNT);
+        preSale.purchaseTokens(amount2);
+
+        uint256 bal = usdc.balanceOf(address(preSale));
+        assertEq(bal, (amount*TOKEN_USDC_PRICE) + (amount2*TOKEN_USDC_PRICE));
+    }
 
     function testPurchaseTokensInsufficientUSDCAmount() public {
         uint256 amount = 25001;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         vm.expectRevert("ERC20: transfer amount exceeds balance");
         preSale.purchaseTokens(amount);
@@ -125,11 +136,40 @@ contract PreSaleTest is Test {
         preSale.purchaseTokens(amount);
     }
 
+    function testPurchaseTokensWithEth() public {
+        uint256 amount = 10_000_000;
+        (, int256 price, , , ) = aggregator.latestRoundData();
+        uint256 weiAmount = (TOKEN_USD_ETH_PRICE * (amount * 10**18)) / uint256(price);
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokensWithEth{value: weiAmount}(amount);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+            vesting.vestingSchedules(address(preSale), _buyer);
+        assertEq(totalTokens, 10_000_000e18);
+        assertEq(releasePeriod, _vestingScheduleMonth);
+        assertEq(startTime, VESTING_START_TIME);
+        assertEq(releasedToken, 0);
+    }
+
+    function testPurchaseTokensWithInsufficientEth() public {
+        uint256 amount = 10_000_000;
+        (, int256 price, , , ) = aggregator.latestRoundData();
+        uint256 weiAmount = (TOKEN_USD_ETH_PRICE * (amount * 10**18)) / uint256(price);
+        vm.expectRevert("Insufficient Eth for purchase");
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokensWithEth{value: weiAmount-1}(amount);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+            vesting.vestingSchedules(address(preSale), _buyer);
+        assertEq(totalTokens, 0);
+        assertEq(releasePeriod, 0);
+        assertEq(startTime, 0);
+        assertEq(releasedToken, 0);
+    }
+
     function testPurchaseTokensInvalidAmount() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         vm.expectRevert("Number of tokens must be greater than zero");
         preSale.purchaseTokens(0);
@@ -138,8 +178,8 @@ contract PreSaleTest is Test {
     function testPurchaseTokenAmountGreaterThanRemaining() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         vm.expectRevert("Insufficient tokens available for sale");
         preSale.purchaseTokens(TOKEN_AMOUNT+1e18);
@@ -148,8 +188,8 @@ contract PreSaleTest is Test {
     function testPurchaseTokensSaleEnded() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         preSale.setSaleEnd();
         hoax(_buyer, TOKEN_AMOUNT);
         vm.expectRevert("Sale has ended");
@@ -159,8 +199,8 @@ contract PreSaleTest is Test {
     function testRemainingToken() public {
         uint256 amount = 1200;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
 
@@ -172,8 +212,8 @@ contract PreSaleTest is Test {
     function testGetReleasableTokens() public {
         uint256 amount = 1200;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
 
@@ -187,8 +227,8 @@ contract PreSaleTest is Test {
     function testSeeClaimableTokens() public {
         uint256 amount = 12;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         deal(_buyer, amount*10**18);
         vm.startPrank(_buyer);
         vm.warp(_timeNow);
@@ -216,12 +256,12 @@ contract PreSaleTest is Test {
         uint256 amount = purchaseAmount;
         deal(_buyer, TOKEN_AMOUNT);
         vm.startPrank(_buyer);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         vm.warp(_timeNow);
         preSale.purchaseTokens(amount);
 
-        uint256 _tokensPerMonth = (purchaseAmount.div(_vestingScheduleMonth)) * 10 ** 18;
+        uint256 _tokensPerMonth = (purchaseAmount / _vestingScheduleMonth) * 10 ** 18;
 
         for (uint256 i = 1; i <= _vestingScheduleMonth; i++) {
             uint256 t = i * SECONDS_PER_MONTH;
@@ -233,11 +273,11 @@ contract PreSaleTest is Test {
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(preSale), _buyer);
 
-            uint256 _releasableTokensMonth = _tokensPerMonth.mul(i);
+            uint256 _releasableTokensMonth = _tokensPerMonth * i;
             if (i == _vestingScheduleMonth) {
-                assertEq(releasableTokensMonth, totalTokens.sub(releasedToken));
+                assertEq(releasableTokensMonth, totalTokens - releasedToken);
             } else {
-                assertEq(releasableTokensMonth, _releasableTokensMonth.sub(releasedToken));
+                assertEq(releasableTokensMonth, _releasableTokensMonth - releasedToken);
             }
         }
     }
@@ -251,15 +291,15 @@ contract PreSaleTest is Test {
 
         uint256 amount = purchaseAmount;
         hoax(_buyer, amount);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, amount);
         preSale.purchaseTokens(amount);
         preSale.setSaleEnd();
         deal(_buyer, amount);
         vm.startPrank(_buyer);
 
-        uint256 _tokensPerMonth = (purchaseAmount.div(_vestingScheduleMonth)) * 10 ** 18;
+        uint256 _tokensPerMonth = (purchaseAmount / _vestingScheduleMonth) * 10 ** 18;
 
         for (uint256 i = 1; i <= _vestingScheduleMonth; i++) {
             uint256 t = i * SECONDS_PER_MONTH;
@@ -271,11 +311,11 @@ contract PreSaleTest is Test {
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(preSale), _buyer);
 
-            uint256 _releasableTokensMonth = _tokensPerMonth.mul(i);
+            uint256 _releasableTokensMonth = _tokensPerMonth * i;
             if (i == _vestingScheduleMonth) {
-                assertEq(releasableTokensMonth, totalTokens.sub(releasedToken));
+                assertEq(releasableTokensMonth, totalTokens - releasedToken);
             } else {
-                assertEq(releasableTokensMonth, _releasableTokensMonth.sub(releasedToken));
+                assertEq(releasableTokensMonth, _releasableTokensMonth - releasedToken);
             }
 
             if (i == collectMonth) {
@@ -289,8 +329,8 @@ contract PreSaleTest is Test {
     function testClaimVestedTokens() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
         preSale.setSaleEnd();
@@ -310,8 +350,8 @@ contract PreSaleTest is Test {
     function testClaimVestedTokensSaleOngoing() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         deal(_buyer, amount);
         vm.startPrank(_buyer);
         preSale.purchaseTokens(amount);
@@ -331,8 +371,8 @@ contract PreSaleTest is Test {
     function testClaimVestedTokensZeroReleasableToken() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
         preSale.setSaleEnd();
@@ -352,11 +392,11 @@ contract PreSaleTest is Test {
 
         vm.warp(_timeNow);
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale2), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale2)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale2), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale2)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
         hoax(_buyer, TOKEN_AMOUNT);
@@ -411,8 +451,8 @@ contract PreSaleTest is Test {
         preSale.setSaleEnd();
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         deal(_buyer, amount);
         vm.startPrank(_buyer);
         vm.expectRevert("Sale has ended");
@@ -423,8 +463,8 @@ contract PreSaleTest is Test {
     function testPreSaleWorkFlowInactive() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, amount);
         preSale.purchaseTokens(amount);
         preSale.setSaleEnd();
@@ -441,8 +481,8 @@ contract PreSaleTest is Test {
     function testPreSaleSeeVestingSchedule() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
         hoax(_buyer, TOKEN_AMOUNT);
@@ -454,11 +494,11 @@ contract PreSaleTest is Test {
         assertEq(releasedToken, 0);
     }
 
-    function testWithdrawFunds() public {
+    function testWithdrawUSDC() public {
         uint256 amount = 200;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
         hoax(_buyer, TOKEN_AMOUNT);
@@ -471,23 +511,51 @@ contract PreSaleTest is Test {
         preSale.setSaleEnd();
         vm.expectRevert("Ownable: caller is not the owner");
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.withdrawFunds();
-        preSale.withdrawFunds();
+        preSale.withdrawUSDC();
+        preSale.withdrawUSDC();
         uint256 bal = usdc.balanceOf(address(this));
-        assertEq(bal, 1000e6 + (amount*TOKEN_PRICE));
+        assertEq(bal, amount*TOKEN_USDC_PRICE);
     }
 
-    function testRefundPurchase() public {
+    function testWithdrawEth() public {
+        uint256 initialAdminBalance = address(this).balance;
+        uint256 amount = 10_000_000;
+        (, int256 price, , , ) = aggregator.latestRoundData();
+        uint256 weiAmount = (TOKEN_USD_ETH_PRICE * (amount * 10**18)) / uint256(price);
+        assertEq(address(preSale).balance, 0);
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokensWithEth{value: weiAmount}(amount);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+            vesting.vestingSchedules(address(preSale), _buyer);
+        assertEq(totalTokens, 10_000_000e18);
+        assertEq(releasePeriod, _vestingScheduleMonth);
+        assertEq(startTime, VESTING_START_TIME);
+        assertEq(releasedToken, 0);
+        assertEq(address(preSale).balance, weiAmount);
+        assertEq(_buyer.balance, TOKEN_AMOUNT - weiAmount);
+
+        preSale.setSaleEnd();
+        vm.expectRevert("Ownable: caller is not the owner");
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.withdrawEth();
+        assertEq(address(this).balance, initialAdminBalance);
+        assertEq(address(preSale).balance, weiAmount);
+        preSale.withdrawEth();
+        assertEq(address(this).balance, initialAdminBalance + weiAmount);
+        assertEq(address(preSale).balance, 0);
+    }
+
+    function testRefundPurchaseUSDC() public {
         uint256 amount = 200;
         hoax(_buyer, TOKEN_AMOUNT);
-        usdc.approve(address(preSale), amount*TOKEN_PRICE);
-        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_PRICE);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         uint256 bal = usdc.balanceOf(address(_buyer));
         assertEq(bal, 1000e6);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokens(amount);
         uint256 bal2 = usdc.balanceOf(address(_buyer));
-        assertEq(bal2, 1000e6 - amount*TOKEN_PRICE);
+        assertEq(bal2, 1000e6 - amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
             preSale.seeVestingSchedule();
@@ -505,6 +573,33 @@ contract PreSaleTest is Test {
         assertEq(releasedToken2, 0);
         uint256 bal3 = usdc.balanceOf(address(_buyer));
         assertEq(bal3, 1000e6);
+    }
+
+    function testPurchaseAndRefundEth() public {
+        uint256 amount = 10_000_000;
+        (, int256 price, , , ) = aggregator.latestRoundData();
+        uint256 weiAmount = (TOKEN_USD_ETH_PRICE * (amount * 10**18)) / uint256(price);
+        assertEq(address(preSale).balance, 0);
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokensWithEth{value: weiAmount}(amount);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+            vesting.vestingSchedules(address(preSale), _buyer);
+        assertEq(totalTokens, 10_000_000e18);
+        assertEq(releasePeriod, _vestingScheduleMonth);
+        assertEq(startTime, VESTING_START_TIME);
+        assertEq(releasedToken, 0);
+        assertEq(address(preSale).balance, weiAmount);
+        assertEq(_buyer.balance, TOKEN_AMOUNT - weiAmount);
+        preSale.refundPurchase(_buyer);
+        assertEq(_buyer.balance, TOKEN_AMOUNT);
+        assertEq(address(preSale).balance, 0);
+        hoax(_buyer, TOKEN_AMOUNT);
+        (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2) =
+            preSale.seeVestingSchedule();
+        assertEq(totalTokens2, 0);
+        assertEq(releasePeriod2, 0);
+        assertEq(startTime2, 0);
+        assertEq(releasedToken2, 0);
     }
 
     receive() external payable {

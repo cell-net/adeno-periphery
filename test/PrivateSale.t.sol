@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import {Adeno} from "adenotoken/Adeno.sol";
 import {Vesting} from "../src/Vesting.sol";
 import {PrivateSale} from "../src/PrivateSale.sol";
 import {console} from "forge-std/console.sol";
-import "openzeppelin/utils/math/SafeMath.sol";
 
 contract PrivateSaleTest is Test {
-    using SafeMath for uint256;
 
     Adeno public adenoToken;
     Vesting public vesting;
@@ -88,7 +86,7 @@ contract PrivateSaleTest is Test {
         assertEq(releasedToken2, 0);
     }
 
-    function testFailPurchaseTokensForNotOwner() public {
+    function testPurchaseTokensForNotOwner() public {
         vm.startPrank(buyer);
         address[] memory recipients = new address[](2);
         recipients[0] = address(buyer);
@@ -106,11 +104,12 @@ contract PrivateSaleTest is Test {
         startTimes[0] = VESTING_START_TIME;
         startTimes[1] = VESTING_START_TIME;
 
+        vm.expectRevert("Ownable: caller is not the owner");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         vm.stopPrank();
     }
 
-    function testFailPurchaseTokensInvalidArrayLength() public {
+    function testPurchaseTokensInvalidArrayLength() public {
         address[] memory recipients = new address[](2);
         recipients[0] = address(buyer);
         recipients[1] = address(buyer2);
@@ -128,10 +127,11 @@ contract PrivateSaleTest is Test {
         startTimes[0] = VESTING_START_TIME;
         startTimes[1] = VESTING_START_TIME;
 
+        vm.expectRevert("Recipients and amounts do not match");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
     }
 
-    function testFailPurchaseTokensInvalidAmounts() public {
+    function testPurchaseTokensInvalidAmounts() public {
         address[] memory recipients = new address[](2);
         recipients[0] = address(buyer);
         recipients[1] = address(buyer2);
@@ -148,10 +148,11 @@ contract PrivateSaleTest is Test {
         startTimes[0] = VESTING_START_TIME;
         startTimes[1] = VESTING_START_TIME;
 
+        vm.expectRevert("Amount must be greater than zero");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
     }
 
-    function testFailPurchaseTokensAmountsGreaterThanRemaining() public {
+    function testPurchaseTokensAmountsGreaterThanRemaining() public {
         address[] memory recipients = new address[](2);
         recipients[0] = address(buyer);
         recipients[1] = address(buyer2);
@@ -168,10 +169,11 @@ contract PrivateSaleTest is Test {
         startTimes[0] = VESTING_START_TIME;
         startTimes[1] = VESTING_START_TIME;
 
+        vm.expectRevert("Insufficient tokens available for sale");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
     }
 
-    function testFailPurchaseTokensForSaleEnded() public {
+    function testPurchaseTokensForSaleEnded() public {
         privateSale.setSaleEnd();
         address[] memory recipients = new address[](2);
         recipients[0] = address(buyer);
@@ -189,6 +191,7 @@ contract PrivateSaleTest is Test {
         startTimes[0] = VESTING_START_TIME;
         startTimes[1] = VESTING_START_TIME;
 
+        vm.expectRevert("Sale has ended");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
     }
 
@@ -288,7 +291,7 @@ contract PrivateSaleTest is Test {
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
-        uint256 _tokensPerMonth = purchaseAmount.div(vestingScheduleMonth);
+        uint256 _tokensPerMonth = purchaseAmount / vestingScheduleMonth;
 
         for (uint256 i = 1; i <= vestingScheduleMonth; i++) {
             uint256 t = i * SECONDS_PER_MONTH;
@@ -300,11 +303,11 @@ contract PrivateSaleTest is Test {
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(privateSale), buyer);
 
-            uint256 _releasableTokensMonth = _tokensPerMonth.mul(i);
+            uint256 _releasableTokensMonth = _tokensPerMonth * i;
             if (i == vestingScheduleMonth) {
-                assertEq(releasableTokensMonth, totalTokens.sub(releasedToken));
+                assertEq(releasableTokensMonth, totalTokens - releasedToken);
             } else {
-                assertEq(releasableTokensMonth, _releasableTokensMonth.sub(releasedToken));
+                assertEq(releasableTokensMonth, _releasableTokensMonth - releasedToken);
             }
         }
     }
@@ -332,9 +335,10 @@ contract PrivateSaleTest is Test {
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
+        privateSale.setSaleEnd();
         vm.startPrank(buyer);
 
-        uint256 _tokensPerMonth = purchaseAmount.div(vestingScheduleMonth);
+        uint256 _tokensPerMonth = purchaseAmount / vestingScheduleMonth;
 
         for (uint256 i = 1; i <= vestingScheduleMonth; i++) {
             uint256 t = i * SECONDS_PER_MONTH;
@@ -346,11 +350,11 @@ contract PrivateSaleTest is Test {
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(privateSale), buyer);
 
-            uint256 _releasableTokensMonth = _tokensPerMonth.mul(i);
+            uint256 _releasableTokensMonth = _tokensPerMonth * i;
             if (i == vestingScheduleMonth) {
-                assertEq(releasableTokensMonth, totalTokens.sub(releasedToken));
+                assertEq(releasableTokensMonth, totalTokens - releasedToken);
             } else {
-                assertEq(releasableTokensMonth, _releasableTokensMonth.sub(releasedToken));
+                assertEq(releasableTokensMonth, _releasableTokensMonth - releasedToken);
             }
 
             if (i == collectMonth) {
@@ -385,9 +389,10 @@ contract PrivateSaleTest is Test {
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
+        privateSale.setSaleEnd();
         vm.startPrank(buyer);
 
-        uint256 _tokensPerMonth = purchaseAmount.div(vestingScheduleMonth);
+        uint256 _tokensPerMonth = purchaseAmount / vestingScheduleMonth;
 
         for (uint256 i = 1; i <= vestingScheduleMonth; i++) {
             uint256 t = i * SECONDS_PER_MONTH;
@@ -399,11 +404,11 @@ contract PrivateSaleTest is Test {
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(privateSale), buyer);
 
-            uint256 _releasableTokensMonth = _tokensPerMonth.mul(i);
+            uint256 _releasableTokensMonth = _tokensPerMonth * i;
             if (i == vestingScheduleMonth) {
-                assertEq(releasableTokensMonth, totalTokens.sub(releasedToken));
+                assertEq(releasableTokensMonth, totalTokens - releasedToken);
             } else {
-                assertEq(releasableTokensMonth, _releasableTokensMonth.sub(releasedToken));
+                assertEq(releasableTokensMonth, _releasableTokensMonth - releasedToken);
             }
 
             if (i == collectMonth || i == collectMonth2) {
@@ -427,12 +432,12 @@ contract PrivateSaleTest is Test {
         startTimes[0] = VESTING_START_TIME;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
-        uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
+        privateSale.setSaleEnd();
 
+        uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
         vm.warp(timeNow + t);
 
         vm.startPrank(buyer);
-
         privateSale.claimVestedTokens();
 
         uint256 bal = adenoToken.balanceOf(buyer);
@@ -465,9 +470,7 @@ contract PrivateSaleTest is Test {
         assertEq(bal, 36e18);
     }
 
-    function testFailClaimVestedTokensSaleOngoing() public {
-        deal(buyer, 100e18);
-        vm.startPrank(buyer);
+    function testClaimVestedTokensSaleOngoing() public {
         address[] memory recipients = new address[](1);
         recipients[0] = address(buyer);
 
@@ -481,20 +484,20 @@ contract PrivateSaleTest is Test {
         startTimes[0] = VESTING_START_TIME;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        hoax(buyer,100e18);
+        vm.expectRevert("Sale has not ended");
         privateSale.claimVestedTokens();
     }
 
-    function testFailClaimVestedTokensZeroContribution() public {
-        vm.startPrank(buyer);
+    function testClaimVestedTokensZeroContribution() public {
         privateSale.setSaleEnd();
+        vm.startPrank(buyer);
+        vm.expectRevert("No tokens available to claim");
         privateSale.claimVestedTokens();
-
         vm.stopPrank();
     }
 
-    function testFailClaimVestedTokensZeroReleasableToken() public {
-        deal(buyer, 100e18);
-        vm.startPrank(buyer);
+    function testClaimVestedTokensZeroReleasableToken() public {
         address[] memory recipients = new address[](1);
         recipients[0] = address(buyer);
 
@@ -510,7 +513,11 @@ contract PrivateSaleTest is Test {
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         vm.warp(timeNow + SECONDS_PER_MONTH * 36);
 
+        privateSale.setSaleEnd();
+        deal(buyer, 100e18);
+        vm.startPrank(buyer);
         privateSale.claimVestedTokens();
+        vm.expectRevert("No tokens available for release");
         privateSale.claimVestedTokens();
 
         vm.stopPrank();
@@ -548,6 +555,8 @@ contract PrivateSaleTest is Test {
         uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
         vm.warp(timeNow + t + 100);
 
+        privateSale.setSaleEnd();
+        privateSale2.setSaleEnd();
         vm.startPrank(buyer);
         privateSale.claimVestedTokens();
         privateSale2.claimVestedTokens();
@@ -558,20 +567,20 @@ contract PrivateSaleTest is Test {
         vm.stopPrank();
     }
 
-    function testsetSaleEnd() public {
+    function testSetSaleEnd() public {
         assertEq(privateSale.isSaleEnd(), false);
         privateSale.setSaleEnd();
         assertEq(privateSale.isSaleEnd(), true);
     }
 
-    function testFailsetSaleEnd() public {
+    function testSetSaleEndNotOwner() public {
         vm.startPrank(buyer);
-
+        vm.expectRevert("Ownable: caller is not the owner");
         privateSale.setSaleEnd();
         vm.stopPrank();
     }
 
-    function testFailPurchaseTokensForOnlySaleNotEnd() public {
+    function testPurchaseTokensForOnlySaleNotEnd() public {
         address[] memory recipients = new address[](2);
         recipients[0] = address(buyer);
         recipients[1] = address(buyer2);
@@ -587,9 +596,6 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](2);
         startTimes[0] = VESTING_START_TIME;
         startTimes[1] = VESTING_START_TIME;
-
-        privateSale.setSaleEnd();
-
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
     }
@@ -613,17 +619,18 @@ contract PrivateSaleTest is Test {
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
+        privateSale.setSaleEnd();
         vm.startPrank(buyer);
 
         privateSale.claimVestedTokens();
 
-        uint256 monthAmount = (block.timestamp.sub(VESTING_START_TIME)).div(SECONDS_PER_MONTH);
+        uint256 monthAmount = (block.timestamp - VESTING_START_TIME) / SECONDS_PER_MONTH;
         uint256 bal = adenoToken.balanceOf(buyer);
         assertEq(bal, monthAmount * 10**18);
         vm.stopPrank();
     }
 
-    function testFailPrivateSaleWorkFlowInactive() public {
+    function testPrivateSaleWorkFlowInactive() public {
         vesting.setVestingSchedulesActive(address(privateSale), false);
 
         address[] memory recipients = new address[](2);
@@ -644,10 +651,10 @@ contract PrivateSaleTest is Test {
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
+        privateSale.setSaleEnd();
         vm.startPrank(buyer);
-
+        vm.expectRevert("Vesting schedule not active");
         privateSale.claimVestedTokens();
-
         vm.stopPrank();
     }
 

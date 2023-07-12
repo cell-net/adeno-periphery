@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/access/Ownable.sol";
 import "openzeppelin/security/Pausable.sol";
-import "openzeppelin/utils/math/SafeMath.sol";
 
 contract Vesting is Ownable, Pausable {
-    using SafeMath for uint256;
 
     uint256 public constant SECONDS_PER_MONTH = 2629746;
 
@@ -40,7 +38,6 @@ contract Vesting is Ownable, Pausable {
         onlyWhitelisted
         whenNotPaused
     {
-        require(vestingSchedulesActive[msg.sender] == true, "Vesting schedule not active");
         require(totalTokens > 0, "Total tokens must be greater than zero");
         require(releasePeriod > 0, "Release period must be greater than zero");
         require(
@@ -54,7 +51,7 @@ contract Vesting is Ownable, Pausable {
             schedule.startTime = startTime == 0 ? block.timestamp : startTime;
             emit VestingScheduleCreated(beneficiary, schedule.totalTokens, schedule.startTime);
         } else {
-            schedule.totalTokens = schedule.totalTokens.add(totalTokens);
+            schedule.totalTokens = schedule.totalTokens + totalTokens;
             emit VestingScheduleUpdated(beneficiary, totalTokens);
         }
     }
@@ -68,7 +65,7 @@ contract Vesting is Ownable, Pausable {
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         uint256 releasableTokens = getReleasableTokens(contractAddress, beneficiary);
         require(releasableTokens > 0, "No tokens available for release");
-        schedule.releasedTokens = schedule.releasedTokens.add(releasableTokens);
+        schedule.releasedTokens = schedule.releasedTokens + releasableTokens;
         token.transfer(beneficiary, releasableTokens);
         emit TokensReleased(beneficiary, releasableTokens);
     }
@@ -76,14 +73,14 @@ contract Vesting is Ownable, Pausable {
     function getReleasableTokens(address contractAddress, address beneficiary) public view returns (uint256) {
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         require(schedule.totalTokens > 0, "No vesting schedule found for the beneficiary");
-        uint256 elapsedTime = block.timestamp.sub(schedule.startTime);
+        uint256 elapsedTime = block.timestamp - schedule.startTime;
         uint256 totalReleasePeriods = schedule.releasePeriod;
         uint256 totalTokens = schedule.totalTokens;
-        uint256 tokensPerPeriod = totalTokens.div(totalReleasePeriods);
-        uint256 passedMonths = elapsedTime.div(SECONDS_PER_MONTH) > totalReleasePeriods
+        uint256 tokensPerPeriod = totalTokens / totalReleasePeriods;
+        uint256 passedMonths = (elapsedTime / SECONDS_PER_MONTH) > totalReleasePeriods
             ? totalReleasePeriods
-            : elapsedTime.div(SECONDS_PER_MONTH);
-        uint256 tokensToRelease = passedMonths.mul(tokensPerPeriod);
+            : elapsedTime / SECONDS_PER_MONTH;
+        uint256 tokensToRelease = passedMonths * (tokensPerPeriod);
 
         // give remaining tokens if last month
         uint256 tokensToClaim;
@@ -91,8 +88,8 @@ contract Vesting is Ownable, Pausable {
             tokensToClaim = 0;
         } else {
             tokensToClaim = passedMonths == totalReleasePeriods
-                ? totalTokens.sub(schedule.releasedTokens)
-                : tokensToRelease.sub(schedule.releasedTokens);
+                ? totalTokens -schedule.releasedTokens
+                : tokensToRelease - schedule.releasedTokens;
         }
         return tokensToClaim;
     }

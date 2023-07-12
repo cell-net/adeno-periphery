@@ -1,22 +1,26 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 import "./Vesting.sol";
-import "openzeppelin/utils/math/SafeMath.sol";
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/access/Ownable.sol";
+import "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "openzeppelin/security/Pausable.sol";
 
-contract PreSale is Ownable {
-    using SafeMath for uint256;
+contract PreSale is Ownable, Pausable {
 
     Vesting public vestingContract;
     IERC20 public erc20Token;
+    AggregatorV3Interface public aggregator;
     bool public isSaleEnd;
     uint256 public tokenPrice;
     uint256 public maxTokensToSell;
     uint256 public remainingTokens;
     uint256 public duration;
     uint256 public vestingStartDate;
+    uint256 public usdPrice;
+    mapping(address => uint256) public usdcAmount;
+    mapping(address => uint256) public ethAmount;
 
     mapping(address => uint256) public vestedAmount;
     mapping(address => bool) public whitelist;
@@ -24,15 +28,16 @@ contract PreSale is Ownable {
     event TokensPurchased(address buyer, uint256 amount);
     event TokensClaimed(address beneficiary, uint256 amount);
 
-    constructor(address _vestingContract, address _erc20TokenContract, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _vestingDuration, uint256 _vestingStartDate) {
+    constructor(address _vestingContract, address _erc20TokenContract, address _aggregatorContract, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _usdPrice, uint256 _vestingDuration, uint256 _vestingStartDate) {
         vestingContract = Vesting(_vestingContract);
         tokenPrice = _tokenPrice; // This is the price of Adeno in 'token bits'
         duration = _vestingDuration;
         vestingStartDate = _vestingStartDate;
         erc20Token = IERC20(_erc20TokenContract);
-
+        aggregator = AggregatorV3Interface(_aggregatorContract);
         maxTokensToSell = _maxTokensToSell;
         remainingTokens = _maxTokensToSell;
+        usdPrice = _usdPrice;
     }
 
     modifier onlySaleEnd() {
@@ -51,7 +56,7 @@ contract PreSale is Ownable {
     }
 
     function purchaseTokens(uint256 _numberOfTokens)
-        external payable
+        external
         onlySaleNotEnd
         onlyWhitelisted
     {
@@ -59,23 +64,56 @@ contract PreSale is Ownable {
         require(remainingTokens >= _numberOfTokens, "Insufficient tokens available for sale");
         require(duration > 0, "Duration must be greater than zero");
 
+        uint256 usdcValue = _numberOfTokens * tokenPrice;
         uint256 allowance = erc20Token.allowance(msg.sender, address(this));
-        require(allowance >= _numberOfTokens.mul(tokenPrice), "Check the token allowance");
-        bool success = erc20Token.transferFrom(msg.sender, address(this), _numberOfTokens.mul(tokenPrice));
+        require(allowance >= usdcValue, "Check the token allowance");
+        bool success = erc20Token.transferFrom(msg.sender, address(this), usdcValue);
         require(success, "Transaction was not successful");
+        usdcAmount[msg.sender] = usdcAmount[msg.sender] + usdcValue;
 
-        vestedAmount[msg.sender] = vestedAmount[msg.sender].add(_numberOfTokens);
+        vestedAmount[msg.sender] = vestedAmount[msg.sender] + _numberOfTokens;
 
         vestingContract.createVestingSchedule(
             msg.sender,
-            _numberOfTokens.mul(10**18),
+            _numberOfTokens * 10**18,
             duration, // Number of months for the release period
             vestingStartDate // Start time of the vesting schedule
         );
 
-        remainingTokens = remainingTokens.sub(_numberOfTokens.mul(10**18));
+        remainingTokens = remainingTokens - (_numberOfTokens * 10**18);
 
-        emit TokensPurchased(msg.sender, _numberOfTokens.mul(10**18));
+        emit TokensPurchased(msg.sender, _numberOfTokens * 10**18);
+    }
+
+    function purchaseTokensWithEth(uint256 _numberOfTokens)
+        external payable
+        onlySaleNotEnd
+        onlyWhitelisted
+    {
+        (, int256 price, , , ) = aggregator.latestRoundData();
+        uint256 ethValue = (usdPrice * (_numberOfTokens * 10**18)) / uint256(price);
+        require(msg.value >= ethValue, "Insufficient Eth for purchase");
+        require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
+        require(remainingTokens >= _numberOfTokens, "Insufficient tokens available for sale");
+        require(duration > 0, "Duration must be greater than zero");
+        ethAmount[msg.sender] = ethAmount[msg.sender] + msg.value;
+
+        vestedAmount[msg.sender] = vestedAmount[msg.sender] + _numberOfTokens;
+
+        vestingContract.createVestingSchedule(
+            msg.sender,
+            _numberOfTokens * 10**18,
+            duration, // Number of months for the release period
+            vestingStartDate // Start time of the vesting schedule
+        );
+
+        remainingTokens = remainingTokens - (_numberOfTokens * 10**18);
+
+        emit TokensPurchased(msg.sender, _numberOfTokens * 10**18);
+    }
+
+    function changeAggregatorInterface(address _address) external onlyOwner {
+        aggregator = AggregatorV3Interface(_address);
     }
 
     function seeVestingSchedule() external view returns (uint256, uint256, uint256, uint256) {
@@ -87,8 +125,7 @@ contract PreSale is Ownable {
     }
 
     function claimVestedTokens() external onlySaleEnd {
-        uint256 userVestedAmount = vestedAmount[msg.sender];
-        require(userVestedAmount > 0, "No tokens available to claim");
+        require(vestedAmount[msg.sender] > 0, "No tokens available to claim");
         uint256 releasableTokens = vestingContract.getReleasableTokens(address(this), msg.sender);
         require(releasableTokens > 0, "No tokens available for release");
 
@@ -102,7 +139,15 @@ contract PreSale is Ownable {
         require(totalTokens != 0);
         require(releasedTokens == 0);
         vestingContract.removeVestingSchedule(address(this), _buyer);
-        require(erc20Token.transfer(_buyer, (totalTokens.div(10**18)).mul(tokenPrice)));
+        if(ethAmount[_buyer] > 0) {
+            require(address(this).balance >= ethAmount[_buyer], "Not enough Eth to make the transfer");
+            (bool success, ) = payable(_buyer).call{value: ethAmount[_buyer]}("");
+            require(success, "ETH transfer failed");
+        }
+        if(usdcAmount[_buyer] > 0) {
+            require(erc20Token.balanceOf(address(this)) >= usdcAmount[_buyer]);
+            require(erc20Token.transfer(_buyer, usdcAmount[_buyer]));
+        }
     }
 
     function addToWhitelist(address[] calldata addresses) external onlyOwner {
@@ -123,7 +168,14 @@ contract PreSale is Ownable {
         isSaleEnd = !isSaleEnd;
     }
 
-    function withdrawFunds() external onlySaleEnd onlyOwner {
+    function withdrawUSDC() external onlySaleEnd onlyOwner {
+        require(erc20Token.balanceOf(address(this)) > 0);
         require(erc20Token.transfer(msg.sender, erc20Token.balanceOf(address(this))));
+    }
+
+    function withdrawEth() external onlySaleEnd onlyOwner {
+        require(address(this).balance > 0);
+        (bool sent,) = payable(msg.sender).call{value: address(this).balance}("");
+        require(sent);
     }
 }

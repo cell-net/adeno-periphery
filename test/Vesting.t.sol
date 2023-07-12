@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import {Adeno} from "adenotoken/Adeno.sol";
 import {Vesting} from "../src/Vesting.sol";
 import {console} from "forge-std/console.sol";
-import "openzeppelin/utils/math/SafeMath.sol";
 
 contract VestingTest is Test {
-    using SafeMath for uint256;
 
     Adeno public adenoToken;
 
@@ -52,9 +50,6 @@ contract VestingTest is Test {
     }
 
     function testCreateAndAddToVestingSchedule() public {
-        vm.expectRevert("Vesting schedule not active");
-        vesting.createVestingSchedule(buyer, 1e18, 36, 0);
-
         // set schedule active
         vesting.setVestingSchedulesActive(address(this), true);
 
@@ -73,43 +68,44 @@ contract VestingTest is Test {
         assertEq(releasePeriod2, 36);
         assertEq(startTime2, block.timestamp);
         assertEq(releasedToken2, 0);
+
         vm.warp(timeNow + SECONDS_PER_MONTH * 2);
 
+        // set schedule inactive
+        vesting.setVestingSchedulesActive(address(this), false);
+        vm.expectRevert("Vesting schedule not active");
+        vesting.releaseTokens(address(this), buyer);
+        // set schedule active
+        vesting.setVestingSchedulesActive(address(this), true);
         vesting.releaseTokens(address(this), buyer);
         uint256 buyerBal = adenoToken.balanceOf(buyer);
         assertEq(buyerBal, 6222222222222222222);
         vm.expectRevert("Vesting schedule already in use, for the beneficiary");
         vesting.createVestingSchedule(buyer, 1e18, 36, 0);
 
-        // set schedule inactive
-        vesting.setVestingSchedulesActive(address(this), false);
-        vm.expectRevert("Vesting schedule not active");
-        vesting.createVestingSchedule(buyer, 1e18, 36, 0);
-
     }
 
-    function testFailCreateVestingScheduleNotWhitelisted() public {
+    function testCreateVestingScheduleNotWhitelisted() public {
         vm.startPrank(buyer);
+        vm.expectRevert("Sender is not whitelisted");
         vesting.createVestingSchedule(buyer, 100e18, 36, 0);
         vm.stopPrank();
     }
 
-    function testFailCreateVestingScheduleZeroTotalToken() public {
+    function testCreateVestingScheduleZeroTotalToken() public {
+        vm.expectRevert("Total tokens must be greater than zero");
         vesting.createVestingSchedule(buyer, 0, 36, 0);
     }
 
-    function testFailCreateVestingScheduleZeroReleasePeriod() public {
+    function testCreateVestingScheduleZeroReleasePeriod() public {
+        vm.expectRevert("Release period must be greater than zero");
         vesting.createVestingSchedule(buyer, 100e18, 0, 0);
     }
 
-    function testFailCreateVestingScheduleWhenPaused() public {
+    function testCreateVestingScheduleWhenPaused() public {
         vesting.pause();
+        vm.expectRevert("Pausable: paused");
         vesting.createVestingSchedule(buyer, 100e18, 36, 0);
-    }
-
-    function testFailCreateVestingScheduleDuplicateBeneficiary() public {
-        vesting.createVestingSchedule(buyer, 100e18, 0, 0);
-        vesting.createVestingSchedule(buyer, 100e18, 0, 0);
     }
 
     function testGetReleasableTokens() public {
@@ -118,7 +114,7 @@ contract VestingTest is Test {
 
         uint256 totalTokens = 100e18;
         uint256 totalMonths = 36;
-        uint256 _tokensPerMonth = totalTokens.div(totalMonths);
+        uint256 _tokensPerMonth = totalTokens / totalMonths;
         vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 0);
 
         uint256 releasableTokensMonth0 = vesting.getReleasableTokens(address(this), buyer);
@@ -134,7 +130,7 @@ contract VestingTest is Test {
 
         uint256 releasableTokensMonth2 = vesting.getReleasableTokens(address(this), buyer);
 
-        uint256 _releasableTokensMonth2 = _tokensPerMonth.mul(2);
+        uint256 _releasableTokensMonth2 = _tokensPerMonth * 2;
         assertEq(releasableTokensMonth2, _releasableTokensMonth2);
     }
 
@@ -147,11 +143,12 @@ contract VestingTest is Test {
         assertEq(scheduleActive, true);
     }
 
-    function testFailReleaseTokensScheduleInactive() public {
+    function testReleaseTokensScheduleInactive() public {
         uint256 totalTokens = 100e18;
         uint256 totalMonths = 36;
         vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 0);
         vm.warp(timeNow + SECONDS_PER_MONTH);
+        vm.expectRevert("Vesting schedule not active");
         vesting.releaseTokens(address(this), buyer);
     }
 
@@ -160,7 +157,7 @@ contract VestingTest is Test {
         vesting.setVestingSchedulesActive(address(this), true);
         uint256 totalTokens = 100e18;
         uint256 totalMonths = 36;
-        uint256 _tokensPerMonth = totalTokens.div(totalMonths);
+        uint256 _tokensPerMonth = totalTokens / totalMonths;
         vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 0);
 
         vm.warp(timeNow + SECONDS_PER_MONTH);
@@ -195,12 +192,13 @@ contract VestingTest is Test {
         assertEq(vesting.whitelist(presale2), true);
     }
 
-    function testFailAddToWhitelist() public {
+    function testAddToWhitelistNotOwner() public {
         vm.startPrank(buyer);
         address[] memory whiteListAddr = new address[](2);
         whiteListAddr[0] = presale1;
         whiteListAddr[1] = presale2;
 
+        vm.expectRevert("Ownable: caller is not the owner");
         vesting.addToWhitelist(whiteListAddr);
         vm.stopPrank();
     }
@@ -221,12 +219,13 @@ contract VestingTest is Test {
         assertEq(vesting.whitelist(presale2), false);
     }
 
-    function testFailRemoveFromWhitelist() public {
+    function testRemoveFromWhitelistNotOwner() public {
         vm.startPrank(buyer);
         address[] memory whiteListAddr = new address[](2);
         whiteListAddr[0] = presale1;
         whiteListAddr[1] = presale2;
 
+        vm.expectRevert("Ownable: caller is not the owner");
         vesting.removeFromWhitelist(whiteListAddr);
         vm.stopPrank();
     }

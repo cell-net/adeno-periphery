@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 import "./Vesting.sol";
-import "openzeppelin/utils/math/SafeMath.sol";
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/access/Ownable.sol";
+import "openzeppelin/security/Pausable.sol";
 
-contract PrivateSale is Ownable {
-    using SafeMath for uint256;
+contract PrivateSale is Ownable, Pausable {
 
     Vesting public vestingContract;
     IERC20 public token;
@@ -55,7 +54,7 @@ contract PrivateSale is Ownable {
             require(remainingTokens >= amount, "Insufficient tokens available for sale");
             require(duration > 0, "Duration must be greater than zero");
 
-            vestedAmount[recipient] = vestedAmount[recipient].add(amount);
+            vestedAmount[recipient] = vestedAmount[recipient] + amount;
 
             vestingContract.createVestingSchedule(
                 recipient,
@@ -64,13 +63,13 @@ contract PrivateSale is Ownable {
                 startTime // Start time of the vesting schedule
             );
 
-            remainingTokens = remainingTokens.sub(amount);
+            remainingTokens = remainingTokens - amount;
 
             emit TokensPurchased(recipient, amount);
         }
     }
 
-    function claimVestedTokens() external {
+    function claimVestedTokens() external onlySaleEnd {
         uint256 userVestedAmount = vestedAmount[msg.sender];
         require(userVestedAmount > 0, "No tokens available to claim");
 
