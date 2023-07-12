@@ -7,3 +7,6 @@
 [submodule "lib/adeno"]
 	path = lib/adeno
 	url = https://github.com/cell-net/adeno
+[submodule "lib/chainlink"]
+	path = lib/chainlink
+	url = https://github.com/smartcontractkit/chainlink
