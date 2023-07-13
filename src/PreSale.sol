@@ -4,10 +4,11 @@ pragma solidity ^0.8.20;
 import "./Vesting.sol";
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/access/Ownable.sol";
+import "openzeppelin/security/ReentrancyGuard.sol";
 import "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "openzeppelin/security/Pausable.sol";
 
-contract PreSale is Ownable, Pausable {
+contract PreSale is Ownable, Pausable, ReentrancyGuard {
 
     Vesting public vestingContract;
     IERC20 public erc20Token;
@@ -128,25 +129,27 @@ contract PreSale is Ownable, Pausable {
         require(vestedAmount[msg.sender] > 0, "No tokens available to claim");
         uint256 releasableTokens = vestingContract.getReleasableTokens(address(this), msg.sender);
         require(releasableTokens > 0, "No tokens available for release");
-
         vestingContract.releaseTokens(address(this), msg.sender);
-
         emit TokensClaimed(msg.sender, releasableTokens);
     }
 
-    function refundPurchase(address _buyer) external onlySaleNotEnd onlyOwner {
+    function refundPurchase(address _buyer) external onlySaleNotEnd nonReentrant onlyOwner {
         (uint256 totalTokens,,, uint256 releasedTokens) = vestingContract.vestingSchedules(address(this), _buyer);
         require(totalTokens != 0);
         require(releasedTokens == 0);
         vestingContract.removeVestingSchedule(address(this), _buyer);
         if(ethAmount[_buyer] > 0) {
             require(address(this).balance >= ethAmount[_buyer], "Not enough Eth to make the transfer");
-            (bool success, ) = payable(_buyer).call{value: ethAmount[_buyer]}("");
+            uint256 ethToRefund = ethAmount[_buyer];
+            ethAmount[_buyer] = 0;
+            (bool success, ) = payable(_buyer).call{value: ethToRefund}("");
             require(success, "ETH transfer failed");
         }
         if(usdcAmount[_buyer] > 0) {
-            require(erc20Token.balanceOf(address(this)) >= usdcAmount[_buyer]);
-            require(erc20Token.transfer(_buyer, usdcAmount[_buyer]));
+            require(erc20Token.balanceOf(address(this)) >= usdcAmount[_buyer], "Not enough USDC to make the transfer");
+            uint256 usdcToRefund = usdcAmount[_buyer];
+            ethAmount[_buyer] = 0;
+            require(erc20Token.transfer(_buyer, usdcToRefund), "USDC transfer failed");
         }
     }
 
@@ -168,12 +171,12 @@ contract PreSale is Ownable, Pausable {
         isSaleEnd = !isSaleEnd;
     }
 
-    function withdrawUSDC() external onlySaleEnd onlyOwner {
+    function withdrawUSDC() external onlySaleEnd nonReentrant onlyOwner {
         require(erc20Token.balanceOf(address(this)) > 0);
         require(erc20Token.transfer(msg.sender, erc20Token.balanceOf(address(this))));
     }
 
-    function withdrawEth() external onlySaleEnd onlyOwner {
+    function withdrawEth() external onlySaleEnd nonReentrant onlyOwner {
         require(address(this).balance > 0);
         (bool sent,) = payable(msg.sender).call{value: address(this).balance}("");
         require(sent);
