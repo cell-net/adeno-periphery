@@ -165,6 +165,21 @@ contract PreSaleTest is Test {
         assertEq(releasedToken, 0);
     }
 
+    function testPurchaseTokensWithExtraEth() public {
+        uint256 amount = 10_000_000;
+        (, int256 price, , , ) = aggregator.latestRoundData();
+        uint256 weiAmount = (TOKEN_USD_ETH_PRICE * (amount * 10**18)) / uint256(price);
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokensWithEth{value: weiAmount+1000}(amount);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+            vesting.vestingSchedules(address(preSale), _buyer);
+        assertEq(totalTokens, 10_000_000e18);
+        assertEq(releasePeriod, _vestingScheduleMonth);
+        assertEq(startTime, VESTING_START_TIME);
+        assertEq(releasedToken, 0);
+        assertEq(_buyer.balance, TOKEN_AMOUNT - weiAmount);
+    }
+
     function testPurchaseTokensInvalidAmount() public {
         uint256 amount = 100;
         hoax(_buyer, TOKEN_AMOUNT);

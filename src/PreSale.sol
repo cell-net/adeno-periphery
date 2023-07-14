@@ -90,6 +90,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         external payable
         onlySaleNotEnd
         onlyWhitelisted
+        nonReentrant
     {
         (, int256 price, , , ) = aggregator.latestRoundData();
         uint256 ethValue = (usdPrice * (_numberOfTokens * 10**18)) / uint256(price);
@@ -97,6 +98,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
         require(remainingTokens >= _numberOfTokens, "Insufficient tokens available for sale");
         require(duration > 0, "Duration must be greater than zero");
+        uint256 excess = msg.value - ethValue;
         ethAmount[msg.sender] = ethAmount[msg.sender] + msg.value;
 
         vestedAmount[msg.sender] = vestedAmount[msg.sender] + _numberOfTokens;
@@ -109,7 +111,11 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         );
 
         remainingTokens = remainingTokens - (_numberOfTokens * 10**18);
-
+        if (excess > 0) {
+            require(address(this).balance >= excess, "Not enough Eth to make the transfer");
+            (bool success, ) = payable(msg.sender).call{value: excess}("");
+            require(success, "ETH transfer failed");
+        }
         emit TokensPurchased(msg.sender, _numberOfTokens * 10**18);
     }
 
