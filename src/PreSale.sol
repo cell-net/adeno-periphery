@@ -61,8 +61,9 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         onlySaleNotEnd
         onlyWhitelisted
     {
+        uint256 _tokensToBuy = _numberOfTokens * 10**18;
         require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
-        require(remainingTokens >= _numberOfTokens * 10**18, "Insufficient tokens available for sale");
+        require(remainingTokens >= _tokensToBuy, "Insufficient tokens available for sale");
         require(duration > 0, "Duration must be greater than zero");
 
         uint256 usdcValue = _numberOfTokens * tokenPrice;
@@ -76,14 +77,14 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
 
         vestingContract.createVestingSchedule(
             msg.sender,
-            _numberOfTokens * 10**18,
+            _tokensToBuy,
             duration, // Number of months for the release period
             vestingStartDate // Start time of the vesting schedule
         );
 
-        remainingTokens = remainingTokens - (_numberOfTokens * 10**18);
+        remainingTokens = remainingTokens - _tokensToBuy;
 
-        emit TokensPurchased(msg.sender, _numberOfTokens * 10**18);
+        emit TokensPurchased(msg.sender, _tokensToBuy);
     }
 
     function purchaseTokensWithEth(uint256 _numberOfTokens)
@@ -92,8 +93,9 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         onlyWhitelisted
         nonReentrant
     {
+        uint256 _tokensToBuy = _numberOfTokens * 10**18;
         (, int256 price, , , ) = aggregator.latestRoundData();
-        uint256 ethValue = (usdPrice * (_numberOfTokens * 10**18)) / uint256(price);
+        uint256 ethValue = (usdPrice * _tokensToBuy) / uint256(price);
         require(msg.value >= ethValue, "Insufficient Eth for purchase");
         require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
         require(remainingTokens >= _numberOfTokens, "Insufficient tokens available for sale");
@@ -101,22 +103,22 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         uint256 excess = msg.value - ethValue;
         ethAmount[msg.sender] = ethAmount[msg.sender] + msg.value;
 
-        vestedAmount[msg.sender] = vestedAmount[msg.sender] + _numberOfTokens;
+        vestedAmount[msg.sender] = vestedAmount[msg.sender] + _tokensToBuy;
 
         vestingContract.createVestingSchedule(
             msg.sender,
-            _numberOfTokens * 10**18,
+            _tokensToBuy,
             duration, // Number of months for the release period
             vestingStartDate // Start time of the vesting schedule
         );
 
-        remainingTokens = remainingTokens - (_numberOfTokens * 10**18);
+        remainingTokens = remainingTokens - _tokensToBuy;
         if (excess > 0) {
             require(address(this).balance >= excess, "Not enough Eth to make the transfer");
             (bool success, ) = payable(msg.sender).call{value: excess}("");
             require(success, "ETH transfer failed");
         }
-        emit TokensPurchased(msg.sender, _numberOfTokens * 10**18);
+        emit TokensPurchased(msg.sender, _tokensToBuy);
     }
 
     function changeAggregatorInterface(address _address) external onlyOwner {
@@ -127,7 +129,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         return vestingContract.vestingSchedules(address(this), msg.sender);
     }
 
-    function seeClaimableTokens() public view returns (uint256 releasableTokens) {
+    function seeClaimableTokens() external view returns (uint256 releasableTokens) {
         releasableTokens = vestingContract.getReleasableTokens(address(this), msg.sender);
     }
 
