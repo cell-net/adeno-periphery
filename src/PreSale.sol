@@ -62,7 +62,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         onlyWhitelisted
     {
         require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
-        require(remainingTokens >= _numberOfTokens, "Insufficient tokens available for sale");
+        require(remainingTokens >= _numberOfTokens * 10**18, "Insufficient tokens available for sale");
         require(duration > 0, "Duration must be greater than zero");
 
         uint256 usdcValue = _numberOfTokens * tokenPrice;
