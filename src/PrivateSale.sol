@@ -85,7 +85,7 @@ contract PrivateSale is Ownable, Pausable {
         isSaleEnd = !isSaleEnd;
     }
 
-    function seeClaimableTokens() public view returns (uint256 releasableTokens) {
+    function seeClaimableTokens() external view returns (uint256 releasableTokens) {
         releasableTokens = vestingContract.getReleasableTokens(address(this), msg.sender);
     }
 }

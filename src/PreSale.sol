@@ -143,8 +143,8 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
 
     function refundPurchase(address _buyer) external onlySaleNotEnd nonReentrant onlyOwner {
         (uint256 totalTokens,,, uint256 releasedTokens) = vestingContract.vestingSchedules(address(this), _buyer);
-        require(totalTokens != 0);
-        require(releasedTokens == 0);
+        require(totalTokens != 0, "Nothing to refund");
+        require(releasedTokens == 0, "Tokens have already been claimed");
         vestingContract.removeVestingSchedule(address(this), _buyer);
         if(ethAmount[_buyer] > 0) {
             require(address(this).balance >= ethAmount[_buyer], "Not enough Eth to make the transfer");
@@ -156,7 +156,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         if(usdcAmount[_buyer] > 0) {
             require(erc20Token.balanceOf(address(this)) >= usdcAmount[_buyer], "Not enough USDC to make the transfer");
             uint256 usdcToRefund = usdcAmount[_buyer];
-            ethAmount[_buyer] = 0;
+            usdcAmount[_buyer] = 0;
             require(erc20Token.transfer(_buyer, usdcToRefund), "USDC transfer failed");
         }
     }
@@ -180,12 +180,12 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     }
 
     function withdrawUSDC() external onlySaleEnd nonReentrant onlyOwner {
-        require(erc20Token.balanceOf(address(this)) > 0);
+        require(erc20Token.balanceOf(address(this)) > 0, "No USDC to withdraw");
         require(erc20Token.transfer(msg.sender, erc20Token.balanceOf(address(this))));
     }
 
     function withdrawEth() external onlySaleEnd nonReentrant onlyOwner {
-        require(address(this).balance > 0);
+        require(address(this).balance > 0, "No Eth to withdraw");
         (bool sent,) = payable(msg.sender).call{value: address(this).balance}("");
         require(sent);
     }
