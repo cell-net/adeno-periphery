@@ -98,7 +98,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         uint256 ethValue = (usdPrice * _tokensToBuy) / uint256(price);
         require(msg.value >= ethValue, "Insufficient Eth for purchase");
         require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
-        require(remainingTokens >= _numberOfTokens, "Insufficient tokens available for sale");
+        require(remainingTokens >= _tokensToBuy, "Insufficient tokens available for sale");
         require(duration > 0, "Duration must be greater than zero");
         uint256 excess = msg.value - ethValue;
         ethAmount[msg.sender] = ethAmount[msg.sender] + msg.value;
