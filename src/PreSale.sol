@@ -56,7 +56,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         _;
     }
 
-    function purchaseTokens(uint256 _numberOfTokens)
+    function purchaseTokensWithUSDC(uint256 _numberOfTokens)
         external
         onlySaleNotEnd
         onlyWhitelisted
