@@ -73,7 +73,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         require(success, "Transaction was not successful");
         usdcAmount[msg.sender] = usdcAmount[msg.sender] + usdcValue;
 
-        vestedAmount[msg.sender] = vestedAmount[msg.sender] + _numberOfTokens;
+        vestedAmount[msg.sender] = vestedAmount[msg.sender] + _tokensToBuy;
 
         vestingContract.createVestingSchedule(
             msg.sender,
