@@ -77,7 +77,7 @@ contract Vesting is Ownable, Pausable {
         uint256 totalReleasePeriods = schedule.releasePeriod;
         uint256 totalTokens = schedule.totalTokens;
         uint256 tokensPerPeriod = totalTokens / totalReleasePeriods;
-        uint256 passedMonths = (elapsedTime / SECONDS_PER_MONTH) > totalReleasePeriods
+        uint256 passedMonths = (elapsedTime / SECONDS_PER_MONTH) >= totalReleasePeriods
             ? totalReleasePeriods
             : elapsedTime / SECONDS_PER_MONTH;
         uint256 tokensToRelease = passedMonths * (tokensPerPeriod);
