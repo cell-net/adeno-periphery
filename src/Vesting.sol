@@ -88,7 +88,7 @@ contract Vesting is Ownable, Pausable {
             tokensToClaim = 0;
         } else {
             tokensToClaim = passedMonths == totalReleasePeriods
-                ? totalTokens -schedule.releasedTokens
+                ? totalTokens - schedule.releasedTokens
                 : tokensToRelease - schedule.releasedTokens;
         }
         return tokensToClaim;
