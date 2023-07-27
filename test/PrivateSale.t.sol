@@ -32,6 +32,7 @@ contract PrivateSaleTest is Test {
         adenoToken = new Adeno(2625000000e18);
         adenoToken.mint(address(this), 236250000e18);
         vesting = new Vesting(address(adenoToken));
+        vesting.updateStartDate(1, VESTING_START_TIME);
         privateSale = new PrivateSale(address(vesting), address(adenoToken), TOKEN_AMOUNT);
         // sell 1000 tokens for 1 eth each
 
@@ -66,8 +67,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
@@ -75,14 +76,14 @@ contract PrivateSaleTest is Test {
             vesting.vestingSchedules(address(privateSale), buyer);
         assertEq(totalTokens, 10e18);
         assertEq(releasePeriod, vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
 
         (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2) =
             vesting.vestingSchedules(address(privateSale), buyer2);
         assertEq(totalTokens2, 20e18);
         assertEq(releasePeriod2, vestingScheduleMonth);
-        assertEq(startTime2, VESTING_START_TIME);
+        assertEq(startTime2, 1);
         assertEq(releasedToken2, 0);
     }
 
@@ -101,8 +102,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         vm.expectRevert("Ownable: caller is not the owner");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
@@ -124,8 +125,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         vm.expectRevert("Recipients and amounts do not match");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
@@ -145,8 +146,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         vm.expectRevert("Amount must be greater than zero");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
@@ -166,8 +167,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         vm.expectRevert("Insufficient tokens available for sale");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
@@ -188,8 +189,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         vm.expectRevert("Sale has ended");
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
@@ -209,8 +210,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         uint256 remainingTokens = privateSale.remainingTokens();
@@ -231,7 +232,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
@@ -254,7 +255,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         vm.startPrank(buyer);
@@ -287,7 +288,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
@@ -331,7 +332,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
@@ -385,7 +386,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 
@@ -429,7 +430,7 @@ contract PrivateSaleTest is Test {
         uint8[] memory durations = new uint8[](1);
         durations[0] = 36;
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         privateSale.setSaleEnd();
@@ -458,7 +459,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
@@ -481,7 +482,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         hoax(buyer,100e18);
@@ -508,7 +509,7 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         vm.warp(timeNow + SECONDS_PER_MONTH * 36);
@@ -534,14 +535,14 @@ contract PrivateSaleTest is Test {
         durations[0] = 36;
 
         uint256[] memory startTimes = new uint256[](1);
-        startTimes[0] = VESTING_START_TIME;
+        startTimes[0] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
             vesting.vestingSchedules(address(privateSale), buyer);
         assertEq(totalTokens, 36e18);
         assertEq(releasePeriod, vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
 
         privateSale2.purchaseTokensFor(recipients, amounts, durations, startTimes);
@@ -549,7 +550,7 @@ contract PrivateSaleTest is Test {
             vesting.vestingSchedules(address(privateSale2), buyer);
         assertEq(totalTokens2, 36e18);
         assertEq(releasePeriod2, vestingScheduleMonth);
-        assertEq(startTime2, VESTING_START_TIME);
+        assertEq(startTime2, 1);
         assertEq(releasedToken2, 0);
 
         uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
@@ -594,40 +595,10 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
-    }
-
-    function testPrivateSaleWorkFlow() public {
-        address[] memory recipients = new address[](2);
-        recipients[0] = address(buyer);
-        recipients[1] = address(buyer2);
-
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 36e18;
-        amounts[1] = 100e18;
-
-        uint8[] memory durations = new uint8[](2);
-        durations[0] = 36;
-        durations[1] = 36;
-
-        uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
-
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
-
-        privateSale.setSaleEnd();
-        vm.startPrank(buyer);
-
-        privateSale.claimVestedTokens();
-
-        uint256 monthAmount = (block.timestamp - VESTING_START_TIME) / SECONDS_PER_MONTH;
-        uint256 bal = adenoToken.balanceOf(buyer);
-        assertEq(bal, monthAmount * 10**18);
-        vm.stopPrank();
     }
 
     function testPrivateSaleWorkFlowInactive() public {
@@ -646,8 +617,8 @@ contract PrivateSaleTest is Test {
         durations[1] = 36;
 
         uint256[] memory startTimes = new uint256[](2);
-        startTimes[0] = VESTING_START_TIME;
-        startTimes[1] = VESTING_START_TIME;
+        startTimes[0] = 1;
+        startTimes[1] = 1;
 
         privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
 

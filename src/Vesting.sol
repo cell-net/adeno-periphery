@@ -12,7 +12,7 @@ contract Vesting is Ownable, Pausable {
     struct VestingSchedule {
         uint256 totalTokens; // amount of tokens for a recipient
         uint256 releasePeriod; // Number of months for the release period
-        uint256 startTime; // Start time of the vesting schedule
+        uint256 startDate; // Start time of the vesting schedule
         uint256 releasedTokens; // Number of tokens released so far
     }
 
@@ -22,6 +22,7 @@ contract Vesting is Ownable, Pausable {
     // privatesale addr => bool
     mapping(address => bool) public vestingSchedulesActive;
     mapping(address => bool) public whitelist;
+    mapping(uint256 => uint256) public startDates;
 
     IERC20 public token;
 
@@ -33,7 +34,7 @@ contract Vesting is Ownable, Pausable {
         token = IERC20(_token);
     }
 
-    function createVestingSchedule(address beneficiary, uint256 totalTokens, uint256 releasePeriod, uint256 startTime)
+    function createVestingSchedule(address beneficiary, uint256 totalTokens, uint256 releasePeriod, uint256 startDate)
         external
         onlyWhitelisted
         whenNotPaused
@@ -48,8 +49,8 @@ contract Vesting is Ownable, Pausable {
         if(vestingSchedules[msg.sender][beneficiary].totalTokens == 0) {
             schedule.totalTokens = totalTokens;
             schedule.releasePeriod = releasePeriod;
-            schedule.startTime = startTime == 0 ? block.timestamp : startTime;
-            emit VestingScheduleCreated(beneficiary, schedule.totalTokens, schedule.startTime);
+            schedule.startDate = startDate;
+            emit VestingScheduleCreated(beneficiary, schedule.totalTokens, schedule.startDate);
         } else {
             schedule.totalTokens = schedule.totalTokens + totalTokens;
             emit VestingScheduleUpdated(beneficiary, totalTokens);
@@ -73,7 +74,7 @@ contract Vesting is Ownable, Pausable {
     function getReleasableTokens(address contractAddress, address beneficiary) public view returns (uint256) {
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         require(schedule.totalTokens > 0, "No vesting schedule found for the beneficiary");
-        uint256 elapsedTime = block.timestamp - schedule.startTime;
+        uint256 elapsedTime = block.timestamp - startDates[schedule.startDate];
         uint256 totalReleasePeriods = schedule.releasePeriod;
         uint256 totalTokens = schedule.totalTokens;
         uint256 tokensPerPeriod = totalTokens / totalReleasePeriods;
@@ -97,6 +98,10 @@ contract Vesting is Ownable, Pausable {
     modifier onlyWhitelisted() {
         require(whitelist[msg.sender], "Sender is not whitelisted");
         _;
+    }
+
+    function updateStartDate(uint256 dateId, uint256 startDate) external onlyOwner {
+        startDates[dateId] = startDate;
     }
 
     function addToWhitelist(address[] calldata addresses) external onlyOwner {

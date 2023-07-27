@@ -46,11 +46,12 @@ contract PreSaleTest is Test {
         adenoToken = new Adeno(2625000000e18);
         adenoToken.mint(address(this), 236250000e18);
         vesting = new Vesting(address(adenoToken));
+        vesting.updateStartDate(1, VESTING_START_TIME);
 
-        preSale = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, VESTING_START_TIME);
+        preSale = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 1);
         // sell 1000 tokens for 1 eth each
 
-        preSale2 = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, VESTING_START_TIME);
+        preSale2 = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 1);
 
         address[] memory whiteListAddr = new address[](5);
         whiteListAddr[0] = address(this);
@@ -93,7 +94,7 @@ contract PreSaleTest is Test {
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens, 100e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
     }
 
@@ -146,7 +147,7 @@ contract PreSaleTest is Test {
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens, 10_000_000e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
     }
 
@@ -175,7 +176,7 @@ contract PreSaleTest is Test {
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens, 10_000_000e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
         assertEq(_buyer.balance, TOKEN_AMOUNT - weiAmount);
     }
@@ -425,14 +426,14 @@ contract PreSaleTest is Test {
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens, 100e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
 
         (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2) =
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens2, 100e18);
         assertEq(releasePeriod2, _vestingScheduleMonth);
-        assertEq(startTime2, VESTING_START_TIME);
+        assertEq(startTime2, 1);
         assertEq(releasedToken2, 0);
 
         uint256 t = uint256(_vestingScheduleMonth) * SECONDS_PER_MONTH;
@@ -505,7 +506,7 @@ contract PreSaleTest is Test {
             preSale.seeVestingSchedule();
         assertEq(totalTokens, 100e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
     }
 
@@ -521,7 +522,7 @@ contract PreSaleTest is Test {
             preSale.seeVestingSchedule();
         assertEq(totalTokens, 200e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
         preSale.setSaleEnd();
         vm.expectRevert("Ownable: caller is not the owner");
@@ -544,7 +545,7 @@ contract PreSaleTest is Test {
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens, 10_000_000e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
         assertEq(address(preSale).balance, weiAmount);
         assertEq(_buyer.balance, TOKEN_AMOUNT - weiAmount);
@@ -576,7 +577,7 @@ contract PreSaleTest is Test {
             preSale.seeVestingSchedule();
         assertEq(totalTokens, 200e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
         preSale.refundPurchase(_buyer);
         hoax(_buyer, TOKEN_AMOUNT);
@@ -601,7 +602,7 @@ contract PreSaleTest is Test {
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens, 10_000_000e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
-        assertEq(startTime, VESTING_START_TIME);
+        assertEq(startTime, 1);
         assertEq(releasedToken, 0);
         assertEq(address(preSale).balance, weiAmount);
         assertEq(_buyer.balance, TOKEN_AMOUNT - weiAmount);
