@@ -7,14 +7,18 @@ import "openzeppelin/security/Pausable.sol";
 
 contract Vesting is Ownable, Pausable {
 
-    uint256 public constant SECONDS_PER_MONTH = 2629746;
+    // Number of seconds in 365 days, divided by 12:
+    uint256 public constant SECONDS_PER_MONTH = 2628000;
 
+    // Mapping of plan id to start date. All beneficiaries of a specific plan would have the same start time
+    mapping(uint256 => uint256) public startDates;
     struct VestingSchedule {
         uint256 totalTokens; // amount of tokens for a recipient
         uint256 releasePeriod; // Number of months for the release period
-        uint256 startDate; // Start time of the vesting schedule
+        uint256 startDate; // The plan number for the start time of the vesting schedule
         uint256 releasedTokens; // Number of tokens released so far
     }
+    uint256 private _tokensVested;
 
     // privatesale addr => (user addr => schedule)
     mapping(address => mapping(address => VestingSchedule)) public vestingSchedules;
@@ -22,7 +26,6 @@ contract Vesting is Ownable, Pausable {
     // privatesale addr => bool
     mapping(address => bool) public vestingSchedulesActive;
     mapping(address => bool) public whitelist;
-    mapping(uint256 => uint256) public startDates;
 
     IERC20 public token;
 
@@ -41,6 +44,7 @@ contract Vesting is Ownable, Pausable {
     {
         require(totalTokens > 0, "Total tokens must be greater than zero");
         require(releasePeriod > 0, "Release period must be greater than zero");
+        require((totalTokens + _tokensVested) <= token.balanceOf(address(this)), "Not enough tokens for vesting");
         require(
             vestingSchedules[msg.sender][beneficiary].releasedTokens == 0,
             "Vesting schedule already in use, for the beneficiary"
@@ -55,17 +59,22 @@ contract Vesting is Ownable, Pausable {
             schedule.totalTokens = schedule.totalTokens + totalTokens;
             emit VestingScheduleUpdated(beneficiary, totalTokens);
         }
+        _tokensVested = _tokensVested + totalTokens;
     }
 
-    function removeVestingSchedule(address contractAddress, address beneficiary) external whenNotPaused {
+    function removeVestingSchedule(address contractAddress, address beneficiary)
+        external
+        whenNotPaused
+        onlyWhitelisted
+    {
         delete vestingSchedules[contractAddress][beneficiary];
     }
 
-    function releaseTokens(address contractAddress, address beneficiary) external whenNotPaused {
+    function releaseTokens(address contractAddress, address beneficiary) external whenNotPaused onlyWhitelisted {
         require(vestingSchedulesActive[contractAddress] == true, "Vesting schedule not active");
-        VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         uint256 releasableTokens = getReleasableTokens(contractAddress, beneficiary);
         require(releasableTokens > 0, "No tokens available for release");
+        VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         schedule.releasedTokens = schedule.releasedTokens + releasableTokens;
         token.transfer(beneficiary, releasableTokens);
         emit TokensReleased(beneficiary, releasableTokens);

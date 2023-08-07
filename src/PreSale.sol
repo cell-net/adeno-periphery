@@ -20,6 +20,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     uint256 public duration;
     uint256 public vestingStartDate;
     uint256 public usdPrice;
+    address public treasuryAddress;
     mapping(address => uint256) public usdcAmount;
     mapping(address => uint256) public ethAmount;
 
@@ -29,16 +30,18 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     event TokensPurchased(address buyer, uint256 amount);
     event TokensClaimed(address beneficiary, uint256 amount);
 
-    constructor(address _vestingContract, address _erc20TokenContract, address _aggregatorContract, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _usdPrice, uint256 _vestingDuration, uint256 _vestingStartDate) {
+    constructor(address _vestingContract, address _erc20TokenContract, address _aggregatorContract, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _usdPrice, uint256 _vestingDuration, uint256 _vestingStartDate, address treasuryAddr) {
         vestingContract = Vesting(_vestingContract);
-        tokenPrice = _tokenPrice; // This is the price of Adeno in 'token bits'
+        tokenPrice = _tokenPrice; // This is the price of Adeno in ERC20 'token bits'
         duration = _vestingDuration;
         vestingStartDate = _vestingStartDate;
         erc20Token = IERC20(_erc20TokenContract);
         aggregator = AggregatorV3Interface(_aggregatorContract);
         maxTokensToSell = _maxTokensToSell;
         remainingTokens = _maxTokensToSell;
-        usdPrice = _usdPrice;
+        usdPrice = _usdPrice; // This is the USD price for Eth purchases
+        isSaleEnd = true;
+        treasuryAddress = treasuryAddr;
     }
 
     modifier onlySaleEnd() {
@@ -60,6 +63,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         external
         onlySaleNotEnd
         onlyWhitelisted
+        nonReentrant
     {
         uint256 _tokensToBuy = _numberOfTokens * 10**18;
         require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
@@ -95,13 +99,14 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     {
         uint256 _tokensToBuy = _numberOfTokens * 10**18;
         (, int256 price, , , ) = aggregator.latestRoundData();
+        require(price >= 0, "Price value must be positive");
         uint256 ethValue = (usdPrice * _tokensToBuy) / uint256(price);
         require(msg.value >= ethValue, "Insufficient Eth for purchase");
         require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
         require(remainingTokens >= _tokensToBuy, "Insufficient tokens available for sale");
         require(duration > 0, "Duration must be greater than zero");
         uint256 excess = msg.value - ethValue;
-        ethAmount[msg.sender] = ethAmount[msg.sender] + msg.value;
+        ethAmount[msg.sender] = ethAmount[msg.sender] + ethValue;
 
         vestedAmount[msg.sender] = vestedAmount[msg.sender] + _tokensToBuy;
 
@@ -145,18 +150,30 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         (uint256 totalTokens,,, uint256 releasedTokens) = vestingContract.vestingSchedules(address(this), _buyer);
         require(totalTokens != 0, "Nothing to refund");
         require(releasedTokens == 0, "Tokens have already been claimed");
-        vestingContract.removeVestingSchedule(address(this), _buyer);
+        bool refundEth;
+        bool refundUSDC;
+        uint256 ethToRefund = 0;
+        uint256 usdcToRefund = 0;
         if(ethAmount[_buyer] > 0) {
             require(address(this).balance >= ethAmount[_buyer], "Not enough Eth to make the transfer");
-            uint256 ethToRefund = ethAmount[_buyer];
+            ethToRefund = ethAmount[_buyer];
             ethAmount[_buyer] = 0;
-            (bool success, ) = payable(_buyer).call{value: ethToRefund}("");
-            require(success, "ETH transfer failed");
+            refundEth = true;
         }
         if(usdcAmount[_buyer] > 0) {
             require(erc20Token.balanceOf(address(this)) >= usdcAmount[_buyer], "Not enough USDC to make the transfer");
-            uint256 usdcToRefund = usdcAmount[_buyer];
+            usdcToRefund = usdcAmount[_buyer];
             usdcAmount[_buyer] = 0;
+            refundUSDC = true;
+        }
+        remainingTokens = remainingTokens + vestedAmount[_buyer];
+        vestedAmount[_buyer] = 0;
+        vestingContract.removeVestingSchedule(address(this), _buyer);
+        if(refundEth) {
+            (bool success, ) = payable(_buyer).call{value: ethToRefund}("");
+            require(success, "ETH transfer failed");
+        }
+        if(refundUSDC) {
             require(erc20Token.transfer(_buyer, usdcToRefund), "USDC transfer failed");
         }
     }
@@ -177,6 +194,20 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
 
     function setSaleEnd() external onlyOwner {
         isSaleEnd = !isSaleEnd;
+    }
+
+    function transferRemaining() external onlySaleEnd onlyOwner {
+        require(remainingTokens > 0, "No tokens remaining");
+        vestingContract.createVestingSchedule(
+            treasuryAddress,
+            remainingTokens,
+            duration,
+            vestingStartDate
+        );
+    }
+
+    function updateTreasuryAddress(address treasuryAddr) external onlyOwner {
+        treasuryAddress = treasuryAddr;
     }
 
     function withdrawUSDC() external onlySaleEnd nonReentrant onlyOwner {

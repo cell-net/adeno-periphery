@@ -165,9 +165,21 @@ contract VestingTest is Test {
 
         vm.startPrank(buyer);
 
+        vesting.getReleasableTokens(address(this), buyer);
+        address[] memory waddr = new address[](1);
+        waddr[0] = buyer;
+
         uint256 releasableTokensMonth1Before = vesting.getReleasableTokens(address(this), buyer);
         assertEq(releasableTokensMonth1Before, _tokensPerMonth);
 
+        vm.expectRevert("Sender is not whitelisted");
+        vesting.releaseTokens(address(this), buyer);
+        vm.stopPrank();
+
+        hoax(address(this));
+        vesting.addToWhitelist(waddr);
+
+        vm.startPrank(buyer);
         vesting.releaseTokens(address(this), buyer);
         uint256 buyerBal = adenoToken.balanceOf(buyer);
         assertEq(buyerBal, _tokensPerMonth);
@@ -176,10 +188,16 @@ contract VestingTest is Test {
         assertEq(releasableTokensMonth1After, 0);
 
         vm.warp(timeNow + SECONDS_PER_MONTH * 2);
-        uint256 releasableTokensMonth2Before = vesting.getReleasableTokens(address(this), buyer);
-        assertEq(releasableTokensMonth2Before, _tokensPerMonth);
+        uint256 releasableTokensMonth2After = vesting.getReleasableTokens(address(this), buyer);
+        assertEq(releasableTokensMonth2After, _tokensPerMonth);
 
         vm.stopPrank();
+    }
+
+    function testUpdatePlan() public {
+        vesting.updateStartDate(1, timeNow + 100);
+        uint256 startDate = vesting.startDates(1);
+        assertEq(startDate, timeNow + 100);
     }
 
     function testAddToWhitelist() public {

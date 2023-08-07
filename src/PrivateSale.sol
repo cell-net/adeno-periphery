@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import "./Vesting.sol";
-import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/access/Ownable.sol";
 import "openzeppelin/security/Pausable.sol";
 
@@ -20,9 +19,8 @@ contract PrivateSale is Ownable, Pausable {
     event TokensPurchased(address buyer, uint256 amount);
     event TokensClaimed(address beneficiary, uint256 amount);
 
-    constructor(address _vestingContract, address _token, uint256 _maxTokensToSell) {
+    constructor(address _vestingContract, uint256 _maxTokensToSell) {
         vestingContract = Vesting(_vestingContract);
-        token = IERC20(_token);
 
         maxTokensToSell = _maxTokensToSell;
         remainingTokens = _maxTokensToSell;
@@ -44,14 +42,17 @@ contract PrivateSale is Ownable, Pausable {
         onlySaleNotEnd
     {
         require(recipients.length == amounts.length, "Recipients and amounts do not match");
+        require(recipients.length == durations.length, "Recipients and durations do not match");
+        require(recipients.length == startTimes.length, "Recipients and startTimes do not match");
+        uint256 amountVested;
         for (uint256 i = 0; i < recipients.length; i++) {
             address recipient = recipients[i];
             uint256 amount = amounts[i];
             uint8 duration = durations[i];
             uint256 startTime = startTimes[i];
-
+            amountVested = amountVested + amount;
             require(amount > 0, "Amount must be greater than zero");
-            require(remainingTokens >= amount, "Insufficient tokens available for sale");
+            require(remainingTokens >= amountVested, "Insufficient tokens available for sale");
             require(duration > 0, "Duration must be greater than zero");
 
             vestedAmount[recipient] = vestedAmount[recipient] + amount;
@@ -62,11 +63,9 @@ contract PrivateSale is Ownable, Pausable {
                 duration, // Number of months for the release period
                 startTime // Start time of the vesting schedule
             );
-
-            remainingTokens = remainingTokens - amount;
-
             emit TokensPurchased(recipient, amount);
         }
+        remainingTokens = remainingTokens - amountVested;
     }
 
     function claimVestedTokens() external onlySaleEnd {

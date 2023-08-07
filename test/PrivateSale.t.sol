@@ -33,10 +33,10 @@ contract PrivateSaleTest is Test {
         adenoToken.mint(address(this), 236250000e18);
         vesting = new Vesting(address(adenoToken));
         vesting.updateStartDate(1, VESTING_START_TIME);
-        privateSale = new PrivateSale(address(vesting), address(adenoToken), TOKEN_AMOUNT);
+        privateSale = new PrivateSale(address(vesting), TOKEN_AMOUNT);
         // sell 1000 tokens for 1 eth each
 
-        privateSale2 = new PrivateSale(address(vesting), address(adenoToken), TOKEN_AMOUNT);
+        privateSale2 = new PrivateSale(address(vesting), TOKEN_AMOUNT);
         // half month
 
         address[] memory whiteListAddr = new address[](3);

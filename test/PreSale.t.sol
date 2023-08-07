@@ -26,6 +26,7 @@ contract PreSaleTest is Test {
 
     address _buyer = vm.addr(0x1);
     address _buyer2 = vm.addr(0x2);
+    address _treasury = vm.addr(0x3);
 
     uint256 private _timeNow;
     uint8 _vestingScheduleMonth;
@@ -43,15 +44,14 @@ contract PreSaleTest is Test {
 
     function setUp() public {
         vm.warp(VESTING_START_TIME);
-        adenoToken = new Adeno(2625000000e18);
-        adenoToken.mint(address(this), 236250000e18);
+        adenoToken = new Adeno(2_625_000_000_000_000_000e18);
+        adenoToken.mint(address(this), 236_250_000_000_000_000e18);
         vesting = new Vesting(address(adenoToken));
         vesting.updateStartDate(1, VESTING_START_TIME);
 
-        preSale = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 1);
-        // sell 1000 tokens for 1 eth each
+        preSale = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 1, _treasury);
 
-        preSale2 = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 1);
+        preSale2 = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 1, _treasury);
 
         address[] memory whiteListAddr = new address[](5);
         whiteListAddr[0] = address(this);
@@ -63,7 +63,7 @@ contract PreSaleTest is Test {
         vesting.addToWhitelist(whiteListAddr);
         preSale.addToWhitelist(whiteListAddr);
         preSale2.addToWhitelist(whiteListAddr);
-        adenoToken.transfer(address(vesting), 1000e18);
+        adenoToken.transfer(address(vesting), 100_000_000_000_000_000e18);
 
         _vestingScheduleMonth = 12;
         _timeNow = VESTING_START_TIME;
@@ -81,6 +81,8 @@ contract PreSaleTest is Test {
         assertEq(balance, 1000e6);
         hoax(_buyer, TOKEN_AMOUNT);
         usdc.approve(address(preSale), 0);
+        preSale.setSaleEnd();
+        preSale2.setSaleEnd();
     }
 
     function testPurchaseTokensWithUSDC() public {
@@ -90,12 +92,14 @@ contract PreSaleTest is Test {
         assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);
         preSale.purchaseTokensWithUSDC(amount);
+        vesting.updateStartDate(1, VESTING_START_TIME+100000);
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
             vesting.vestingSchedules(address(preSale), _buyer);
         assertEq(totalTokens, 100e18);
         assertEq(releasePeriod, _vestingScheduleMonth);
         assertEq(startTime, 1);
         assertEq(releasedToken, 0);
+        assertEq(vesting.startDates(1), VESTING_START_TIME+100000);
     }
 
     function testReceivedFromMultipleBuyersUSDC() public {
@@ -223,6 +227,26 @@ contract PreSaleTest is Test {
         uint256 remainingTokens = preSale.remainingTokens();
         uint256 maxTokensToSell = preSale.maxTokensToSell();
         assertEq(remainingTokens, maxTokensToSell - 1200e18);
+    }
+
+    function testTransferRemaining() public {
+        uint256 amount = 1200;
+        hoax(_buyer, TOKEN_AMOUNT);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokensWithUSDC(amount);
+        uint256 remainingTokens = preSale.remainingTokens();
+        uint256 maxTokensToSell = preSale.maxTokensToSell();
+        assertEq(remainingTokens, maxTokensToSell - 1200e18);
+        preSale.setSaleEnd();
+        preSale.transferRemaining();
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+            vesting.vestingSchedules(address(preSale), _treasury);
+        assertEq(totalTokens, remainingTokens);
+        assertEq(releasePeriod, VESTING_DURATION);
+        assertEq(startTime, 1);
+        assertEq(releasedToken, 0);
     }
 
     function testGetReleasableTokens() public {
