@@ -2,16 +2,19 @@
 pragma solidity ^0.8.20;
 
 import "./Vesting.sol";
+import "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/access/Ownable.sol";
 import "openzeppelin/security/ReentrancyGuard.sol";
 import "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "openzeppelin/security/Pausable.sol";
 
+interface ERC20Interface is IERC20, IERC20Permit {}
+
 contract PreSale is Ownable, Pausable, ReentrancyGuard {
 
     Vesting public vestingContract;
-    IERC20 public erc20Token;
+    ERC20Interface public erc20Token;
     AggregatorV3Interface public aggregator;
     bool public isSaleEnd;
     uint256 public tokenPrice;
@@ -19,6 +22,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     uint256 public remainingTokens;
     uint256 public duration;
     uint256 public vestingStartDate;
+    uint256 public lockDuration;
     uint256 public usdPrice;
     address public treasuryAddress;
     mapping(address => uint256) public usdcAmount;
@@ -30,18 +34,20 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     event TokensPurchased(address buyer, uint256 amount);
     event TokensClaimed(address beneficiary, uint256 amount);
 
-    constructor(address _vestingContract, address _erc20TokenContract, address _aggregatorContract, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _usdPrice, uint256 _vestingDuration, uint256 _vestingStartDate, address treasuryAddr) {
+    constructor(address _vestingContract, address _erc20TokenContract, address _aggregatorContract, uint256 _maxTokensToSell, uint256 _tokenPrice, uint256 _usdPrice, uint256 _vestingDuration, uint256 _vestingStartDate, uint256 _lockDuration, address _treasuryAddress) Ownable(msg.sender) {
+        require(_treasuryAddress != address(0), "Treasury address cannot be Zero");
         vestingContract = Vesting(_vestingContract);
         tokenPrice = _tokenPrice; // This is the price of Adeno in ERC20 'token bits'
         duration = _vestingDuration;
         vestingStartDate = _vestingStartDate;
-        erc20Token = IERC20(_erc20TokenContract);
+        lockDuration = _lockDuration;
+        erc20Token = ERC20Interface(_erc20TokenContract);
         aggregator = AggregatorV3Interface(_aggregatorContract);
         maxTokensToSell = _maxTokensToSell;
         remainingTokens = _maxTokensToSell;
         usdPrice = _usdPrice; // This is the USD price for Eth purchases
         isSaleEnd = true;
-        treasuryAddress = treasuryAddr;
+        treasuryAddress = _treasuryAddress;
     }
 
     modifier onlySaleEnd() {
@@ -50,7 +56,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     }
 
     modifier onlySaleNotEnd() {
-        require(!isSaleEnd, "Sale has ended");
+        require(!isSaleEnd, "Sale is not running");
         _;
     }
 
@@ -59,7 +65,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         _;
     }
 
-    function purchaseTokensWithUSDC(uint256 _numberOfTokens)
+    function purchaseTokensWithUSDC(uint256 _numberOfTokens, uint8 v, bytes32 r, bytes32 s)
         external
         onlySaleNotEnd
         onlyWhitelisted
@@ -71,8 +77,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         require(duration > 0, "Duration must be greater than zero");
 
         uint256 usdcValue = _numberOfTokens * tokenPrice;
-        uint256 allowance = erc20Token.allowance(msg.sender, address(this));
-        require(allowance >= usdcValue, "Check the token allowance");
+        erc20Token.permit(msg.sender, address(this), usdcValue, block.timestamp + 3600, v, r, s);
         bool success = erc20Token.transferFrom(msg.sender, address(this), usdcValue);
         require(success, "Transaction was not successful");
         usdcAmount[msg.sender] = usdcAmount[msg.sender] + usdcValue;
@@ -83,7 +88,8 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
             msg.sender,
             _tokensToBuy,
             duration, // Number of months for the release period
-            vestingStartDate // Start time of the vesting schedule
+            vestingStartDate, // Start time of the vesting schedule
+            lockDuration // Number of months before vesting period begins
         );
 
         remainingTokens = remainingTokens - _tokensToBuy;
@@ -114,7 +120,8 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
             msg.sender,
             _tokensToBuy,
             duration, // Number of months for the release period
-            vestingStartDate // Start time of the vesting schedule
+            vestingStartDate, // Start time of the vesting schedule
+            lockDuration // Number of months before vesting period begins
         );
 
         remainingTokens = remainingTokens - _tokensToBuy;
@@ -130,7 +137,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         aggregator = AggregatorV3Interface(_address);
     }
 
-    function seeVestingSchedule() external view returns (uint256, uint256, uint256, uint256) {
+    function seeVestingSchedule() external view returns (uint256, uint256, uint256, uint256, uint256) {
         return vestingContract.vestingSchedules(address(this), msg.sender);
     }
 
@@ -147,7 +154,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     }
 
     function refundPurchase(address _buyer) external onlySaleNotEnd nonReentrant onlyOwner {
-        (uint256 totalTokens,,, uint256 releasedTokens) = vestingContract.vestingSchedules(address(this), _buyer);
+        (uint256 totalTokens,,, uint256 releasedTokens,) = vestingContract.vestingSchedules(address(this), _buyer);
         require(totalTokens != 0, "Nothing to refund");
         require(releasedTokens == 0, "Tokens have already been claimed");
         bool refundEth;
@@ -198,16 +205,43 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
 
     function transferRemaining() external onlySaleEnd onlyOwner {
         require(remainingTokens > 0, "No tokens remaining");
+        uint256 vestingAmount = remainingTokens;
+        remainingTokens = 0;
         vestingContract.createVestingSchedule(
             treasuryAddress,
-            remainingTokens,
+            vestingAmount,
             duration,
-            vestingStartDate
+            vestingStartDate,
+            lockDuration
         );
     }
 
     function updateTreasuryAddress(address treasuryAddr) external onlyOwner {
+        require(treasuryAddr != address(0), "Treasury address cannot be Zero");
         treasuryAddress = treasuryAddr;
+    }
+
+    function updateVestingAddress(address vestingAddr) external onlyOwner {
+        require(vestingAddr != address(0), "Vesting address cannot be Zero");
+        vestingContract = Vesting(vestingAddr);
+    }
+
+    function updateUSDCAddress(address erc20Addr) external onlyOwner {
+        require(erc20Addr != address(0), "ERC20 address cannot be Zero");
+        erc20Token = ERC20Interface(erc20Addr);
+    }
+
+    function updateAggregatorAddress(address aggregatorAddr) external onlyOwner {
+        require(aggregatorAddr != address(0), "Aggregator address cannot be Zero");
+        aggregator = AggregatorV3Interface(aggregatorAddr);
+    }
+
+    function updateTokenPrice(uint256 _tokenPrice) external onlyOwner {
+        tokenPrice = _tokenPrice; // This is the price of Adeno in ERC20 'token bits'
+    }
+
+    function updateEthPrice(uint256 _usdPrice) external onlyOwner {
+        usdPrice = _usdPrice; // This is the USD price for Eth purchases
     }
 
     function withdrawUSDC() external onlySaleEnd nonReentrant onlyOwner {

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
@@ -70,21 +70,27 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
 
-        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
+
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
             vesting.vestingSchedules(address(privateSale), buyer);
         assertEq(totalTokens, 10e18);
         assertEq(releasePeriod, vestingScheduleMonth);
         assertEq(startTime, 1);
         assertEq(releasedToken, 0);
+        assertEq(lockDuration, 0);
 
-        (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2) =
+        (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2, uint256 lockDuration2) =
             vesting.vestingSchedules(address(privateSale), buyer2);
         assertEq(totalTokens2, 20e18);
         assertEq(releasePeriod2, vestingScheduleMonth);
         assertEq(startTime2, 1);
         assertEq(releasedToken2, 0);
+        assertEq(lockDuration2, 0);
     }
 
     function testPurchaseTokensForNotOwner() public {
@@ -105,8 +111,13 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
-        vm.expectRevert("Ownable: caller is not the owner");
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
+        bytes4 selector = bytes4(keccak256("OwnableUnauthorizedAccount(address)"));
+        vm.expectRevert(abi.encodeWithSelector(selector, address(0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf)));
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
         vm.stopPrank();
     }
 
@@ -128,8 +139,12 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
         vm.expectRevert("Recipients and amounts do not match");
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
     }
 
     function testPurchaseTokensInvalidAmounts() public {
@@ -149,8 +164,12 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
         vm.expectRevert("Amount must be greater than zero");
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
     }
 
     function testPurchaseTokensAmountsGreaterThanRemaining() public {
@@ -170,8 +189,12 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
         vm.expectRevert("Insufficient tokens available for sale");
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
     }
 
     function testPurchaseTokensForSaleEnded() public {
@@ -192,8 +215,12 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
         vm.expectRevert("Sale has ended");
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
     }
 
     function testRemainingToken() public {
@@ -213,7 +240,11 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
         uint256 remainingTokens = privateSale.remainingTokens();
         uint256 maxTokensToSell = privateSale.maxTokensToSell();
 
@@ -234,7 +265,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
 
         // 1 May 2023 == 10 month
         vm.warp(1682963257);
@@ -257,7 +291,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
         vm.startPrank(buyer);
 
         uint256 releasableTokensMonth0 = privateSale.seeClaimableTokens();
@@ -272,6 +309,48 @@ contract PrivateSaleTest is Test {
             assertEq(releasableTokensMonth, i * 10 ** 18);
         }
         vm.stopPrank();
+    }
+
+    function testFiveYearGetReleasableTokens() public {
+
+        address[] memory recipients = new address[](1);
+        recipients[0] = address(buyer);
+
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 36;
+
+        uint8[] memory durations = new uint8[](1);
+        durations[0] = 60;
+
+        uint256[] memory startTimes = new uint256[](1);
+        startTimes[0] = 1;
+
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 24;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
+
+        uint256 _tokensPerMonth = amounts[0] / (durations[0] - lockDurations[0]);
+
+        for (uint256 i = 1; i <= durations[0]; i++) {
+            uint256 t = i * SECONDS_PER_MONTH;
+
+            vm.warp(timeNow + t);
+
+            (uint256 totalTokens,,, uint256 releasedToken, uint256 lockDuration) =
+                vesting.vestingSchedules(address(privateSale), buyer);
+
+            uint256 releasableTokensMonth = vesting.getReleasableTokens(address(privateSale), buyer);
+
+            if (i == 60) {
+                assertEq(releasableTokensMonth, totalTokens - releasedToken);
+            } else if(i > lockDuration) {
+                uint256 _releasableTokensMonth = _tokensPerMonth * (i - lockDuration);
+                assertEq(releasableTokensMonth, _releasableTokensMonth - releasedToken);
+            } else {
+                assertEq(releasableTokensMonth, 0);
+            }
+        }
     }
 
     function testFuzzGetReleasableTokens(uint256 purchaseAmount) public {
@@ -290,7 +369,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
 
         uint256 _tokensPerMonth = purchaseAmount / vestingScheduleMonth;
 
@@ -299,7 +381,7 @@ contract PrivateSaleTest is Test {
 
             vm.warp(timeNow + t);
 
-            (uint256 totalTokens,,, uint256 releasedToken) =
+            (uint256 totalTokens,,, uint256 releasedToken,) =
                 vesting.vestingSchedules(address(privateSale), buyer);
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(privateSale), buyer);
@@ -334,7 +416,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
 
         privateSale.setSaleEnd();
         vm.startPrank(buyer);
@@ -346,7 +431,7 @@ contract PrivateSaleTest is Test {
 
             vm.warp(timeNow + t);
 
-            (uint256 totalTokens,,, uint256 releasedToken) =
+            (uint256 totalTokens,,, uint256 releasedToken,) =
                 vesting.vestingSchedules(address(privateSale), buyer);
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(privateSale), buyer);
@@ -388,7 +473,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
 
         privateSale.setSaleEnd();
         vm.startPrank(buyer);
@@ -400,7 +488,7 @@ contract PrivateSaleTest is Test {
 
             vm.warp(timeNow + t);
 
-            (uint256 totalTokens,,, uint256 releasedToken) =
+            (uint256 totalTokens,,, uint256 releasedToken,) =
                 vesting.vestingSchedules(address(privateSale), buyer);
 
             uint256 releasableTokensMonth = vesting.getReleasableTokens(address(privateSale), buyer);
@@ -432,7 +520,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
         privateSale.setSaleEnd();
 
         uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
@@ -461,7 +552,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
         uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
 
         vm.warp(timeNow + t);
@@ -484,7 +578,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
         hoax(buyer,100e18);
         vm.expectRevert("Sale has not ended");
         privateSale.claimVestedTokens();
@@ -511,7 +608,10 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
         vm.warp(timeNow + SECONDS_PER_MONTH * 36);
 
         privateSale.setSaleEnd();
@@ -537,21 +637,26 @@ contract PrivateSaleTest is Test {
         uint256[] memory startTimes = new uint256[](1);
         startTimes[0] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
-        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+        uint256[] memory lockDurations = new uint256[](1);
+        lockDurations[0] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
             vesting.vestingSchedules(address(privateSale), buyer);
         assertEq(totalTokens, 36e18);
         assertEq(releasePeriod, vestingScheduleMonth);
         assertEq(startTime, 1);
         assertEq(releasedToken, 0);
+        assertEq(lockDuration, 0);
 
-        privateSale2.purchaseTokensFor(recipients, amounts, durations, startTimes);
-        (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2) =
+        privateSale2.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
+        (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2, uint256 lockDuration2) =
             vesting.vestingSchedules(address(privateSale2), buyer);
         assertEq(totalTokens2, 36e18);
         assertEq(releasePeriod2, vestingScheduleMonth);
         assertEq(startTime2, 1);
         assertEq(releasedToken2, 0);
+        assertEq(lockDuration2, 0);
 
         uint256 t = uint256(vestingScheduleMonth) * SECONDS_PER_MONTH;
         vm.warp(timeNow + t + 100);
@@ -576,7 +681,8 @@ contract PrivateSaleTest is Test {
 
     function testSetSaleEndNotOwner() public {
         vm.startPrank(buyer);
-        vm.expectRevert("Ownable: caller is not the owner");
+        bytes4 selector = bytes4(keccak256("OwnableUnauthorizedAccount(address)"));
+        vm.expectRevert(abi.encodeWithSelector(selector, address(0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf)));
         privateSale.setSaleEnd();
         vm.stopPrank();
     }
@@ -598,7 +704,11 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
     }
 
     function testPrivateSaleWorkFlowInactive() public {
@@ -620,7 +730,11 @@ contract PrivateSaleTest is Test {
         startTimes[0] = 1;
         startTimes[1] = 1;
 
-        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes);
+        uint256[] memory lockDurations = new uint256[](2);
+        lockDurations[0] = 0;
+        lockDurations[1] = 0;
+
+        privateSale.purchaseTokensFor(recipients, amounts, durations, startTimes, lockDurations);
 
         privateSale.setSaleEnd();
         vm.startPrank(buyer);

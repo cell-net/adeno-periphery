@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
@@ -41,34 +41,37 @@ contract VestingTest is Test {
         // set schedule active
         vesting.setVestingSchedulesActive(address(this), true);
 
-        vesting.createVestingSchedule(buyer, 100e18, 36, 1);
-        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+        vesting.createVestingSchedule(buyer, 100e18, 36, 1, 0);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
             vesting.vestingSchedules(address(this), buyer);
         assertEq(totalTokens, 100e18);
         assertEq(releasePeriod, 36);
         assertEq(startTime, 1);
         assertEq(releasedToken, 0);
+        assertEq(lockDuration, 0);
     }
 
     function testCreateAndAddToVestingSchedule() public {
         // set schedule active
         vesting.setVestingSchedulesActive(address(this), true);
 
-        vesting.createVestingSchedule(buyer, 110e18, 36, 1);
-        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken) =
+        vesting.createVestingSchedule(buyer, 110e18, 36, 1, 0);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
             vesting.vestingSchedules(address(this), buyer);
         assertEq(totalTokens, 110e18);
         assertEq(releasePeriod, 36);
         assertEq(startTime, 1);
         assertEq(releasedToken, 0);
+        assertEq(lockDuration, 0);
 
-        vesting.createVestingSchedule(buyer, 2e18, 36, 1);
-        (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2) =
+        vesting.createVestingSchedule(buyer, 2e18, 36, 1, 0);
+        (uint256 totalTokens2, uint256 releasePeriod2, uint256 startTime2, uint256 releasedToken2, uint256 lockDuration2) =
             vesting.vestingSchedules(address(this), buyer);
         assertEq(totalTokens2, 112e18);
         assertEq(releasePeriod2, 36);
         assertEq(startTime2, 1);
         assertEq(releasedToken2, 0);
+        assertEq(lockDuration2, 0);
 
         vm.warp(timeNow + SECONDS_PER_MONTH * 2);
 
@@ -82,31 +85,31 @@ contract VestingTest is Test {
         uint256 buyerBal = adenoToken.balanceOf(buyer);
         assertEq(buyerBal, 6222222222222222222);
         vm.expectRevert("Vesting schedule already in use, for the beneficiary");
-        vesting.createVestingSchedule(buyer, 1e18, 36, 1);
-
+        vesting.createVestingSchedule(buyer, 1e18, 36, 1, 0);
     }
 
     function testCreateVestingScheduleNotWhitelisted() public {
         vm.startPrank(buyer);
         vm.expectRevert("Sender is not whitelisted");
-        vesting.createVestingSchedule(buyer, 100e18, 36, 1);
+        vesting.createVestingSchedule(buyer, 100e18, 36, 1, 0);
         vm.stopPrank();
     }
 
     function testCreateVestingScheduleZeroTotalToken() public {
         vm.expectRevert("Total tokens must be greater than zero");
-        vesting.createVestingSchedule(buyer, 0, 36, 1);
+        vesting.createVestingSchedule(buyer, 0, 36, 1, 0);
     }
 
     function testCreateVestingScheduleZeroReleasePeriod() public {
         vm.expectRevert("Release period must be greater than zero");
-        vesting.createVestingSchedule(buyer, 100e18, 0, 1);
+        vesting.createVestingSchedule(buyer, 100e18, 0, 1, 0);
     }
 
     function testCreateVestingScheduleWhenPaused() public {
         vesting.pause();
-        vm.expectRevert("Pausable: paused");
-        vesting.createVestingSchedule(buyer, 100e18, 36, 1);
+        bytes4 selector = bytes4(keccak256("EnforcedPause()"));
+        vm.expectRevert(selector);
+        vesting.createVestingSchedule(buyer, 100e18, 36, 1, 0);
     }
 
     function testGetReleasableTokens() public {
@@ -116,7 +119,7 @@ contract VestingTest is Test {
         uint256 totalTokens = 100e18;
         uint256 totalMonths = 36;
         uint256 _tokensPerMonth = totalTokens / totalMonths;
-        vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 1);
+        vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 1, 0);
 
         uint256 releasableTokensMonth0 = vesting.getReleasableTokens(address(this), buyer);
         assertEq(releasableTokensMonth0, 0);
@@ -135,6 +138,52 @@ contract VestingTest is Test {
         assertEq(releasableTokensMonth2, _releasableTokensMonth2);
     }
 
+    function testGetNextClaimableTime() public {
+        // set schedule active
+        vesting.setVestingSchedulesActive(address(this), true);
+
+        uint256 totalTokens = 100e18;
+        uint256 totalMonths = 36;
+        uint256 _tokensPerMonth = totalTokens / totalMonths;
+        vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 1, 0);
+
+        uint256 releasableTokensMonth0 = vesting.getReleasableTokens(address(this), buyer);
+        assertEq(releasableTokensMonth0, 0);
+
+        vm.warp(timeNow + 1750);
+        uint256 nextTime = vesting.getNextClaimableTime(address(this), buyer, 1);
+        assertEq(nextTime, SECONDS_PER_MONTH - 1750);
+
+        vm.warp(timeNow + SECONDS_PER_MONTH - 1750);
+        uint256 nextTime2 = vesting.getNextClaimableTime(address(this), buyer, 1);
+        assertEq(nextTime2, 1750);
+
+        vm.warp(timeNow + (SECONDS_PER_MONTH * 3) - 1750);
+        uint256 nextTime3 = vesting.getNextClaimableTime(address(this), buyer, 1);
+        assertEq(nextTime3, 1750);
+
+        vm.warp(timeNow + SECONDS_PER_MONTH);
+
+        uint256 releasableTokensMonth1 = vesting.getReleasableTokens(address(this), buyer);
+        uint256 _releasableTokensMonth1 = _tokensPerMonth;
+        assertEq(releasableTokensMonth1, _releasableTokensMonth1);
+
+        uint256 nextTime4 = vesting.getNextClaimableTime(address(this), buyer, 1);
+        assertEq(nextTime4, 2628000);
+
+        vm.warp(timeNow + (SECONDS_PER_MONTH * 40));
+
+        uint256 releasableTokensMonth2 = vesting.getReleasableTokens(address(this), buyer);
+        assertEq(releasableTokensMonth2, totalTokens);
+
+        uint256 nextTime5 = vesting.getNextClaimableTime(address(this), buyer, 1);
+        assertEq(nextTime5, 0);
+        vesting.releaseTokens(address(this), buyer);
+        uint256 nextTime6 = vesting.getNextClaimableTime(address(this), buyer, 1);
+        assertEq(nextTime6, 0);
+        assertEq(adenoToken.balanceOf(buyer), totalTokens);
+    }
+
     function testSetVestingSchedulesActive() public {
         bool scheduleActive = vesting.vestingSchedulesActive(address(this));
         assertEq(scheduleActive, false);
@@ -147,7 +196,7 @@ contract VestingTest is Test {
     function testReleaseTokensScheduleInactive() public {
         uint256 totalTokens = 100e18;
         uint256 totalMonths = 36;
-        vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 1);
+        vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 1, 0);
         vm.warp(timeNow + SECONDS_PER_MONTH);
         vm.expectRevert("Vesting schedule not active");
         vesting.releaseTokens(address(this), buyer);
@@ -159,7 +208,7 @@ contract VestingTest is Test {
         uint256 totalTokens = 100e18;
         uint256 totalMonths = 36;
         uint256 _tokensPerMonth = totalTokens / totalMonths;
-        vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 1);
+        vesting.createVestingSchedule(buyer, totalTokens, totalMonths, 1, 0);
 
         vm.warp(timeNow + SECONDS_PER_MONTH);
 
@@ -216,8 +265,8 @@ contract VestingTest is Test {
         address[] memory whiteListAddr = new address[](2);
         whiteListAddr[0] = presale1;
         whiteListAddr[1] = presale2;
-
-        vm.expectRevert("Ownable: caller is not the owner");
+        bytes4 selector = bytes4(keccak256("OwnableUnauthorizedAccount(address)"));
+        vm.expectRevert(abi.encodeWithSelector(selector, address(0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf)));
         vesting.addToWhitelist(whiteListAddr);
         vm.stopPrank();
     }
@@ -244,7 +293,8 @@ contract VestingTest is Test {
         whiteListAddr[0] = presale1;
         whiteListAddr[1] = presale2;
 
-        vm.expectRevert("Ownable: caller is not the owner");
+        bytes4 selector = bytes4(keccak256("OwnableUnauthorizedAccount(address)"));
+        vm.expectRevert(abi.encodeWithSelector(selector, address(0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf)));
         vesting.removeFromWhitelist(whiteListAddr);
         vm.stopPrank();
     }

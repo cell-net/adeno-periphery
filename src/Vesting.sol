@@ -17,6 +17,7 @@ contract Vesting is Ownable, Pausable {
         uint256 releasePeriod; // Number of months for the release period
         uint256 startDate; // The plan number for the start time of the vesting schedule
         uint256 releasedTokens; // Number of tokens released so far
+        uint256 lockDuration; // Number of months for the release period
     }
     uint256 private _tokensVested;
 
@@ -30,14 +31,14 @@ contract Vesting is Ownable, Pausable {
     IERC20 public token;
 
     event TokensReleased(address beneficiary, uint256 amount);
-    event VestingScheduleCreated(address beneficiary, uint256 totalTokens, uint256 startTime);
+    event VestingScheduleCreated(address beneficiary, uint256 totalTokens, uint256 startDate, uint256 lockDuration);
     event VestingScheduleUpdated(address beneficiary, uint256 totalTokens);
 
-    constructor(address _token) {
+    constructor(address _token) Ownable(msg.sender) {
         token = IERC20(_token);
     }
 
-    function createVestingSchedule(address beneficiary, uint256 totalTokens, uint256 releasePeriod, uint256 startDate)
+    function createVestingSchedule(address beneficiary, uint256 totalTokens, uint256 releasePeriod, uint256 startDate, uint256 lockDuration)
         external
         onlyWhitelisted
         whenNotPaused
@@ -54,7 +55,8 @@ contract Vesting is Ownable, Pausable {
             schedule.totalTokens = totalTokens;
             schedule.releasePeriod = releasePeriod;
             schedule.startDate = startDate;
-            emit VestingScheduleCreated(beneficiary, schedule.totalTokens, schedule.startDate);
+            schedule.lockDuration = lockDuration;
+            emit VestingScheduleCreated(beneficiary, schedule.totalTokens, startDates[schedule.startDate], schedule.lockDuration);
         } else {
             schedule.totalTokens = schedule.totalTokens + totalTokens;
             emit VestingScheduleUpdated(beneficiary, totalTokens);
@@ -67,6 +69,9 @@ contract Vesting is Ownable, Pausable {
         whenNotPaused
         onlyWhitelisted
     {
+        VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
+        uint256 tokensLeft = schedule.totalTokens - schedule.releasedTokens;
+        _tokensVested = _tokensVested - tokensLeft;
         delete vestingSchedules[contractAddress][beneficiary];
     }
 
@@ -83,25 +88,50 @@ contract Vesting is Ownable, Pausable {
     function getReleasableTokens(address contractAddress, address beneficiary) public view returns (uint256) {
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         require(schedule.totalTokens > 0, "No vesting schedule found for the beneficiary");
-        uint256 elapsedTime = block.timestamp - startDates[schedule.startDate];
-        uint256 totalReleasePeriods = schedule.releasePeriod;
-        uint256 totalTokens = schedule.totalTokens;
-        uint256 tokensPerPeriod = totalTokens / totalReleasePeriods;
-        uint256 passedMonths = (elapsedTime / SECONDS_PER_MONTH) >= totalReleasePeriods
-            ? totalReleasePeriods
-            : elapsedTime / SECONDS_PER_MONTH;
-        uint256 tokensToRelease = passedMonths * (tokensPerPeriod);
-
-        // give remaining tokens if last month
         uint256 tokensToClaim;
-        if(passedMonths == 0) {
+        if(block.timestamp <= (startDates[schedule.startDate] + (schedule.lockDuration * SECONDS_PER_MONTH))) {
             tokensToClaim = 0;
         } else {
-            tokensToClaim = passedMonths == totalReleasePeriods
-                ? totalTokens - schedule.releasedTokens
-                : tokensToRelease - schedule.releasedTokens;
+            uint256 elapsedTime = block.timestamp - (startDates[schedule.startDate] + (schedule.lockDuration * SECONDS_PER_MONTH));
+            uint256 totalReleasePeriods = schedule.releasePeriod;
+            uint256 totalTokens = schedule.totalTokens;
+            uint256 lockDuration = schedule.lockDuration;
+            uint256 tokensPerPeriod = totalTokens / (totalReleasePeriods - lockDuration);
+            uint256 passedMonths = (elapsedTime / SECONDS_PER_MONTH) >= totalReleasePeriods
+                ? totalReleasePeriods
+                : elapsedTime / SECONDS_PER_MONTH;
+            uint256 tokensToRelease = passedMonths * (tokensPerPeriod);
+
+            if(passedMonths == 0) {
+                tokensToClaim = 0;
+            } else {
+                tokensToClaim = passedMonths == totalReleasePeriods
+                    ? totalTokens - schedule.releasedTokens
+                    : tokensToRelease - schedule.releasedTokens;
+            }
         }
         return tokensToClaim;
+    }
+
+    function getNextClaimableTime(address contractAddress, address beneficiary, uint256 dateID) external view returns (uint256) {
+        VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
+        uint256 current_time = block.timestamp;
+        uint256 timeRemaining;
+        uint256 claimingStartTime = startDates[dateID] + (schedule.lockDuration * SECONDS_PER_MONTH);
+        if(current_time > ((schedule.releasePeriod + schedule.lockDuration) * SECONDS_PER_MONTH) + startDates[dateID]) {
+            timeRemaining = 0;
+        } else {
+            if(current_time >= claimingStartTime) {
+                uint256 diff = current_time - claimingStartTime;
+                uint256 current_multiple = diff / SECONDS_PER_MONTH;
+                uint256 timer_start = (current_multiple * SECONDS_PER_MONTH) + claimingStartTime;
+                uint256 current_progress_in_month = current_time - timer_start;
+                timeRemaining = SECONDS_PER_MONTH - current_progress_in_month;
+            } else {
+                timeRemaining = claimingStartTime - current_time;
+            }
+        }
+        return timeRemaining;
     }
 
     modifier onlyWhitelisted() {
@@ -129,6 +159,11 @@ contract Vesting is Ownable, Pausable {
 
     function setVestingSchedulesActive(address contractAddress, bool active) external onlyOwner {
         vestingSchedulesActive[contractAddress] = active;
+    }
+
+    function updateTokenAddress(address tokenAddr) external onlyOwner {
+        require(tokenAddr != address(0), "Token address cannot be Zero");
+        token = IERC20(tokenAddr);
     }
 
     function pause() external onlyOwner {

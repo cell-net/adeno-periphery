@@ -19,9 +19,8 @@ contract PrivateSale is Ownable, Pausable {
     event TokensPurchased(address buyer, uint256 amount);
     event TokensClaimed(address beneficiary, uint256 amount);
 
-    constructor(address _vestingContract, uint256 _maxTokensToSell) {
+    constructor(address _vestingContract, uint256 _maxTokensToSell) Ownable(msg.sender) {
         vestingContract = Vesting(_vestingContract);
-
         maxTokensToSell = _maxTokensToSell;
         remainingTokens = _maxTokensToSell;
     }
@@ -36,7 +35,7 @@ contract PrivateSale is Ownable, Pausable {
         _;
     }
 
-    function purchaseTokensFor(address[] calldata recipients, uint256[] calldata amounts, uint8[] calldata durations, uint256[] calldata startTimes)
+    function purchaseTokensFor(address[] calldata recipients, uint256[] calldata amounts, uint8[] calldata durations, uint256[] calldata startTimes, uint256[] calldata lockDurations)
         external
         onlyOwner
         onlySaleNotEnd
@@ -44,12 +43,14 @@ contract PrivateSale is Ownable, Pausable {
         require(recipients.length == amounts.length, "Recipients and amounts do not match");
         require(recipients.length == durations.length, "Recipients and durations do not match");
         require(recipients.length == startTimes.length, "Recipients and startTimes do not match");
+        require(recipients.length == lockDurations.length, "Recipients and lockDurations do not match");
         uint256 amountVested;
         for (uint256 i = 0; i < recipients.length; i++) {
             address recipient = recipients[i];
             uint256 amount = amounts[i];
             uint8 duration = durations[i];
             uint256 startTime = startTimes[i];
+            uint256 lockDuration = lockDurations[i];
             amountVested = amountVested + amount;
             require(amount > 0, "Amount must be greater than zero");
             require(remainingTokens >= amountVested, "Insufficient tokens available for sale");
@@ -61,7 +62,8 @@ contract PrivateSale is Ownable, Pausable {
                 recipient,
                 amount,
                 duration, // Number of months for the release period
-                startTime // Start time of the vesting schedule
+                startTime, // Start time of the vesting schedule
+                lockDuration // Number of months before vesting period begins
             );
             emit TokensPurchased(recipient, amount);
         }
@@ -86,5 +88,10 @@ contract PrivateSale is Ownable, Pausable {
 
     function seeClaimableTokens() external view returns (uint256 releasableTokens) {
         releasableTokens = vestingContract.getReleasableTokens(address(this), msg.sender);
+    }
+
+    function updateVestingAddress(address vestingAddr) external onlyOwner {
+        require(vestingAddr != address(0), "Vesting address cannot be Zero");
+        vestingContract = Vesting(vestingAddr);
     }
 }
