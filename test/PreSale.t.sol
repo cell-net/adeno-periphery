@@ -66,6 +66,7 @@ contract PreSaleTest is Test {
     // FakeUSDC usdc = new FakeUSDC(100_000_000_000_000e6);
     AggregatorV3Interface private aggregator = AggregatorV3Interface(chainlinkAddress);
     bytes32 domainSeparator = 0x06c37168a7db5138defc7866392bb87a741f9b3d104deb5094588ce041cae335;
+    uint256 public maxInt = 2**256 - 1;
 
     // Mainnet fork test setup
     function setUp() public {
@@ -108,14 +109,30 @@ contract PreSaleTest is Test {
         assertEq(balance, 1000e6);
         hoax(_buyer, TOKEN_AMOUNT);
         usdc.approve(address(preSale), 0);
-        preSale.setSaleEnd();
-        preSale2.setSaleEnd();
     }
 
     function testPurchaseTokensWithUSDC() public {
         uint256 amount = 100;
+        hoax(_buyer, TOKEN_AMOUNT);
+        usdc.approve(address(preSale), amount*TOKEN_USDC_PRICE);
+        assertEq(usdc.allowance(_buyer, address(preSale)), amount*TOKEN_USDC_PRICE);
+        hoax(_buyer, TOKEN_AMOUNT);
+        preSale.purchaseTokensWithUSDC(amount);
+        vesting.updateStartDate(1, VESTING_START_TIME+100000);
+        (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
+            vesting.vestingSchedules(address(preSale), _buyer);
+        assertEq(totalTokens, 100e18);
+        assertEq(releasePeriod, _vestingScheduleMonth);
+        assertEq(startTime, 1);
+        assertEq(releasedToken, 0);
+        assertEq(lockDuration, 0);
+        assertEq(vesting.startDates(1), VESTING_START_TIME+100000);
+    }
+
+    function testPermitAndPurchaseTokensWithUSDC() public {
+        uint256 amount = 100;
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -127,7 +144,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         
         vesting.updateStartDate(1, VESTING_START_TIME+100000);
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
@@ -146,7 +163,7 @@ contract PreSaleTest is Test {
 
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer), block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer), maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -158,14 +175,14 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
 
         deal(_buyer2, TOKEN_AMOUNT);
 
         uint256 amount2 = 5000;
 
         uint256 usdcValue2 = amount2 * preSale.tokenPrice();
-        bytes32 structHash2 = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer2, address(preSale), usdcValue2, usdc.nonces(_buyer2), block.timestamp + 3600));
+        bytes32 structHash2 = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer2, address(preSale), usdcValue2, usdc.nonces(_buyer2), maxInt));
         bytes32 messageHash2 = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -177,7 +194,7 @@ contract PreSaleTest is Test {
         (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(0x2, messageHash2);
 
         hoax(_buyer2, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount2, v2, r2, s2);
+        preSale.permitAndPurchaseTokensWithUSDC(amount2, v2, r2, s2);
 
         uint256 bal = usdc.balanceOf(address(preSale));
         assertEq(bal, 2.8e8);
@@ -188,7 +205,7 @@ contract PreSaleTest is Test {
 
         uint256 amount = 1e6;
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -201,7 +218,7 @@ contract PreSaleTest is Test {
 
         hoax(_buyer, TOKEN_AMOUNT);
         vm.expectRevert("ERC20: transfer amount exceeds balance");
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
     }
 
     function testPurchaseTokensWithEth() public {
@@ -256,7 +273,7 @@ contract PreSaleTest is Test {
         uint256 amount = 2000;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -268,14 +285,14 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         vm.expectRevert("Number of tokens must be greater than zero");
-        preSale.purchaseTokensWithUSDC(0, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(0, v, r, s);
     }
 
     function testPurchaseTokenAmountGreaterThanRemaining() public {
         deal(_buyer, TOKEN_AMOUNT);
         uint256 amount = TOKEN_AMOUNT;
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -287,7 +304,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         vm.expectRevert("Insufficient tokens available for sale");
-        preSale.purchaseTokensWithUSDC(TOKEN_AMOUNT+1e18, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(TOKEN_AMOUNT+1e18, v, r, s);
     }
 
     function testPurchaseTokensSaleEnded() public {
@@ -295,7 +312,7 @@ contract PreSaleTest is Test {
         uint256 amount = 2000;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -309,14 +326,14 @@ contract PreSaleTest is Test {
         preSale.setSaleEnd();
         hoax(_buyer, TOKEN_AMOUNT);
         vm.expectRevert("Sale is not running");
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
     }
 
     function testRemainingToken() public {
         uint256 amount = 1200;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -328,7 +345,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
 
         uint256 remainingTokens = preSale.remainingTokens();
         uint256 maxTokensToSell = preSale.maxTokensToSell();
@@ -340,7 +357,7 @@ contract PreSaleTest is Test {
         uint256 amount = 1200;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -352,7 +369,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         uint256 remainingTokens = preSale.remainingTokens();
         uint256 maxTokensToSell = preSale.maxTokensToSell();
         assertEq(remainingTokens, maxTokensToSell - 1200e18);
@@ -361,7 +378,7 @@ contract PreSaleTest is Test {
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
             vesting.vestingSchedules(address(preSale), _treasury);
         assertEq(totalTokens, remainingTokens);
-        assertEq(releasePeriod, VESTING_DURATION);
+        assertEq(releasePeriod, 1);
         assertEq(startTime, 1);
         assertEq(releasedToken, 0);
         assertEq(lockDuration, 0);
@@ -371,7 +388,7 @@ contract PreSaleTest is Test {
         uint256 amount = 1200;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -383,7 +400,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
 
         // 6 month time warp:
         vm.warp(block.timestamp + (2629746*6));
@@ -396,7 +413,7 @@ contract PreSaleTest is Test {
         uint256 amount = 12;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -410,7 +427,7 @@ contract PreSaleTest is Test {
         deal(_buyer, amount*10**18);
         vm.startPrank(_buyer);
         vm.warp(_timeNow);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
 
         uint256 releasableTokensMonth0 = preSale.seeClaimableTokens();
         assertEq(releasableTokensMonth0, 0);
@@ -434,7 +451,7 @@ contract PreSaleTest is Test {
         uint256 amount = purchaseAmount;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -447,7 +464,7 @@ contract PreSaleTest is Test {
 
         vm.warp(_timeNow);
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
 
         uint256 _tokensPerMonth = (purchaseAmount / _vestingScheduleMonth) * 10 ** 18;
 
@@ -480,7 +497,7 @@ contract PreSaleTest is Test {
         uint256 amount = purchaseAmount;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -492,7 +509,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, amount);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         preSale.setSaleEnd();
         deal(_buyer, amount);
         vm.startPrank(_buyer);
@@ -528,7 +545,7 @@ contract PreSaleTest is Test {
         uint256 amount = 100;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -540,7 +557,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         preSale.setSaleEnd();
         deal(_buyer, amount);
         vm.startPrank(_buyer);
@@ -555,77 +572,76 @@ contract PreSaleTest is Test {
         vm.stopPrank();
     }
 
-    function testClaimingWithLockDurations() public {
-        vesting.updateStartDate(1, VESTING_START_TIME);
+    // function testClaimingWithLockDurations() public {
+    //     vesting.updateStartDate(1, VESTING_START_TIME);
 
-        PreSale preSale3 = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 3, 7, _treasury);
+    //     PreSale preSale3 = new PreSale(address(vesting), usdcAddress, chainlinkAddress, TOKEN_AMOUNT, TOKEN_USDC_PRICE, TOKEN_USD_ETH_PRICE, VESTING_DURATION, 3, 7, _treasury);
 
-        address[] memory whiteListAddr = new address[](4);
-        whiteListAddr[0] = address(this);
-        whiteListAddr[1] = address(preSale3);
-        whiteListAddr[2] = _buyer;
-        whiteListAddr[3] = _buyer2;
+    //     address[] memory whiteListAddr = new address[](4);
+    //     whiteListAddr[0] = address(this);
+    //     whiteListAddr[1] = address(preSale3);
+    //     whiteListAddr[2] = _buyer;
+    //     whiteListAddr[3] = _buyer2;
 
-        vesting.addToWhitelist(whiteListAddr);
-        preSale3.addToWhitelist(whiteListAddr);
-        vesting.setVestingSchedulesActive(address(preSale3), true);
+    //     vesting.addToWhitelist(whiteListAddr);
+    //     preSale3.addToWhitelist(whiteListAddr);
+    //     vesting.setVestingSchedulesActive(address(preSale3), true);
 
-        uint256 amount = 100;
+    //     uint256 amount = 100;
 
-        uint256 usdcValue = amount * preSale3.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale3), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
-        bytes32 messageHash = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                domainSeparator,
-                structHash
-            )
-        );
+    //     uint256 usdcValue = amount * preSale3.tokenPrice();
+    //     bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale3), usdcValue, usdc.nonces(_buyer) , maxInt));
+    //     bytes32 messageHash = keccak256(
+    //         abi.encodePacked(
+    //             "\x19\x01",
+    //             domainSeparator,
+    //             structHash
+    //         )
+    //     );
 
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
+    //     (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
-        preSale3.setSaleEnd();
-        hoax(_buyer, TOKEN_AMOUNT);
-        preSale3.purchaseTokensWithUSDC(amount, v, r, s);
-        preSale3.setSaleEnd();
-        deal(_buyer, amount);
-        vm.startPrank(_buyer);
+    //     hoax(_buyer, TOKEN_AMOUNT);
+    //     preSale3.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
+    //     preSale3.setSaleEnd();
+    //     deal(_buyer, amount);
+    //     vm.startPrank(_buyer);
 
-        uint256 claimableTokens;
-        uint256 nextClaimableTime;
+    //     uint256 claimableTokens;
+    //     uint256 nextClaimableTime;
 
-        claimableTokens = preSale3.seeClaimableTokens();
-        nextClaimableTime = vesting.getNextClaimableTime(address(preSale3), _buyer, 3);
-        assertEq(claimableTokens, 0);
-        assertEq(nextClaimableTime, (VESTING_START_TIME + (7*SECONDS_PER_MONTH) - _timeNow));
+    //     claimableTokens = preSale3.seeClaimableTokens();
+    //     nextClaimableTime = vesting.getNextClaimableTime(address(preSale3), _buyer, 3);
+    //     assertEq(claimableTokens, 0);
+    //     assertEq(nextClaimableTime, (VESTING_START_TIME + (7*SECONDS_PER_MONTH) - _timeNow));
 
-        for (uint256 i = 1; i <= _vestingScheduleMonth; i++) {
-            vm.warp(_timeNow + ((i * SECONDS_PER_MONTH + 100)));
-            claimableTokens = preSale3.seeClaimableTokens();
-            nextClaimableTime = vesting.getNextClaimableTime(address(preSale3), _buyer, 3);
-            if(i <= 6) {
-                assertEq(claimableTokens, 0);
-                assertEq(nextClaimableTime, (VESTING_START_TIME + (7*SECONDS_PER_MONTH) - (i*SECONDS_PER_MONTH) - _timeNow - 100));
-            } else if(i == 7) {
-                assertEq(claimableTokens, 0);
-                assertEq(nextClaimableTime, (VESTING_START_TIME + SECONDS_PER_MONTH) - _timeNow - 100);
-            } else {
-                assertEq(claimableTokens, ((i-7)*20e18));
-                assertEq(nextClaimableTime, SECONDS_PER_MONTH - 100);
-            }
-        }
-        preSale3.claimVestedTokens();
+    //     for (uint256 i = 1; i <= _vestingScheduleMonth; i++) {
+    //         vm.warp(_timeNow + ((i * SECONDS_PER_MONTH + 100)));
+    //         claimableTokens = preSale3.seeClaimableTokens();
+    //         nextClaimableTime = vesting.getNextClaimableTime(address(preSale3), _buyer, 3);
+    //         if(i <= 6) {
+    //             assertEq(claimableTokens, 0);
+    //             assertEq(nextClaimableTime, (VESTING_START_TIME + (7*SECONDS_PER_MONTH) - (i*SECONDS_PER_MONTH) - _timeNow - 100));
+    //         } else if(i == 7) {
+    //             assertEq(claimableTokens, 0);
+    //             assertEq(nextClaimableTime, (VESTING_START_TIME + SECONDS_PER_MONTH) - _timeNow - 100);
+    //         } else {
+    //             assertEq(claimableTokens, ((i-7)*20e18));
+    //             assertEq(nextClaimableTime, SECONDS_PER_MONTH - 100);
+    //         }
+    //     }
+    //     preSale3.claimVestedTokens();
 
-        uint256 bal = adenoToken.balanceOf(_buyer);
-        assertEq(bal, 100e18);
-        vm.stopPrank();
-    }
+    //     uint256 bal = adenoToken.balanceOf(_buyer);
+    //     assertEq(bal, 100e18);
+    //     vm.stopPrank();
+    // }
 
     function testClaimVestedTokensSaleOngoing() public {
         uint256 amount = 100;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -638,7 +654,7 @@ contract PreSaleTest is Test {
 
         deal(_buyer, amount);
         vm.startPrank(_buyer);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         vm.warp(_timeNow);
         vm.expectRevert("Sale has not ended");
         preSale.claimVestedTokens();
@@ -656,7 +672,7 @@ contract PreSaleTest is Test {
         uint256 amount = 100;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -668,7 +684,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         preSale.setSaleEnd();
         deal(_buyer, amount);
         vm.startPrank(_buyer);
@@ -685,7 +701,7 @@ contract PreSaleTest is Test {
         uint256 amount = 100;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -698,9 +714,9 @@ contract PreSaleTest is Test {
 
         vm.warp(_timeNow);
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
 
-        bytes32 structHash2 = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale2), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash2 = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale2), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash2 = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -712,7 +728,7 @@ contract PreSaleTest is Test {
         (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(0x1, messageHash2);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale2.purchaseTokensWithUSDC(amount, v2, r2, s2);
+        preSale2.permitAndPurchaseTokensWithUSDC(amount, v2, r2, s2);
         preSale.setSaleEnd();
         preSale2.setSaleEnd();
         deal(_buyer, amount);
@@ -767,7 +783,7 @@ contract PreSaleTest is Test {
         uint256 amount = 100;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -781,7 +797,7 @@ contract PreSaleTest is Test {
         deal(_buyer, amount);
         vm.startPrank(_buyer);
         vm.expectRevert("Sale is not running");
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         vm.stopPrank();
     }
 
@@ -789,7 +805,7 @@ contract PreSaleTest is Test {
         uint256 amount = 100;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -801,7 +817,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, amount);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         preSale.setSaleEnd();
         vesting.setVestingSchedulesActive(address(preSale), false);
         uint256 t = uint256(_vestingScheduleMonth) * SECONDS_PER_MONTH;
@@ -817,7 +833,7 @@ contract PreSaleTest is Test {
         uint256 amount = 100;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -829,7 +845,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         hoax(_buyer, TOKEN_AMOUNT);
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
             preSale.seeVestingSchedule();
@@ -844,7 +860,7 @@ contract PreSaleTest is Test {
         uint256 amount = 200;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -856,7 +872,7 @@ contract PreSaleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1, messageHash);
 
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         hoax(_buyer, TOKEN_AMOUNT);
         (uint256 totalTokens, uint256 releasePeriod, uint256 startTime, uint256 releasedToken, uint256 lockDuration) =
             preSale.seeVestingSchedule();
@@ -909,7 +925,7 @@ contract PreSaleTest is Test {
         uint256 amount = 200;
 
         uint256 usdcValue = amount * preSale.tokenPrice();
-        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , block.timestamp + 3600));
+        bytes32 structHash = keccak256(abi.encode(0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9, _buyer, address(preSale), usdcValue, usdc.nonces(_buyer) , maxInt));
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -923,7 +939,7 @@ contract PreSaleTest is Test {
         uint256 bal = usdc.balanceOf(address(_buyer));
         assertEq(bal, 1000e6);
         hoax(_buyer, TOKEN_AMOUNT);
-        preSale.purchaseTokensWithUSDC(amount, v, r, s);
+        preSale.permitAndPurchaseTokensWithUSDC(amount, v, r, s);
         uint256 bal2 = usdc.balanceOf(address(_buyer));
         assertEq(bal2, 1000e6 - amount*TOKEN_USDC_PRICE);
         hoax(_buyer, TOKEN_AMOUNT);

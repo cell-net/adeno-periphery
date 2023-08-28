@@ -25,6 +25,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
     uint256 public lockDuration;
     uint256 public usdPrice;
     address public treasuryAddress;
+    uint256 public maxInt = 2**256 - 1;
     mapping(address => uint256) public usdcAmount;
     mapping(address => uint256) public ethAmount;
 
@@ -46,7 +47,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         maxTokensToSell = _maxTokensToSell;
         remainingTokens = _maxTokensToSell;
         usdPrice = _usdPrice; // This is the USD price for Eth purchases
-        isSaleEnd = true;
+        isSaleEnd = false;
         treasuryAddress = _treasuryAddress;
     }
 
@@ -65,7 +66,7 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         _;
     }
 
-    function purchaseTokensWithUSDC(uint256 _numberOfTokens, uint8 v, bytes32 r, bytes32 s)
+    function purchaseTokensWithUSDC(uint256 _numberOfTokens)
         external
         onlySaleNotEnd
         onlyWhitelisted
@@ -77,7 +78,40 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         require(duration > 0, "Duration must be greater than zero");
 
         uint256 usdcValue = _numberOfTokens * tokenPrice;
-        erc20Token.permit(msg.sender, address(this), usdcValue, block.timestamp + 3600, v, r, s);
+        uint256 allowance = erc20Token.allowance(msg.sender, address(this));
+        require(allowance >= usdcValue, "Check the token allowance");
+        bool success = erc20Token.transferFrom(msg.sender, address(this), usdcValue);
+        require(success, "Transaction was not successful");
+        usdcAmount[msg.sender] = usdcAmount[msg.sender] + usdcValue;
+
+        vestedAmount[msg.sender] = vestedAmount[msg.sender] + _tokensToBuy;
+
+        vestingContract.createVestingSchedule(
+            msg.sender,
+            _tokensToBuy,
+            duration, // Number of months for the release period
+            vestingStartDate, // Start time of the vesting schedule
+            lockDuration // Number of months before vesting period begins
+        );
+
+        remainingTokens = remainingTokens - _tokensToBuy;
+
+        emit TokensPurchased(msg.sender, _tokensToBuy);
+    }
+
+    function permitAndPurchaseTokensWithUSDC(uint256 _numberOfTokens, uint8 v, bytes32 r, bytes32 s)
+        external
+        onlySaleNotEnd
+        onlyWhitelisted
+        nonReentrant
+    {
+        uint256 _tokensToBuy = _numberOfTokens * 10**18;
+        require(_numberOfTokens > 0, "Number of tokens must be greater than zero");
+        require(remainingTokens >= _tokensToBuy, "Insufficient tokens available for sale");
+        require(duration > 0, "Duration must be greater than zero");
+
+        uint256 usdcValue = _numberOfTokens * tokenPrice;
+        erc20Token.permit(msg.sender, address(this), usdcValue, uint256(maxInt), v, r, s);
         bool success = erc20Token.transferFrom(msg.sender, address(this), usdcValue);
         require(success, "Transaction was not successful");
         usdcAmount[msg.sender] = usdcAmount[msg.sender] + usdcValue;
@@ -210,9 +244,9 @@ contract PreSale is Ownable, Pausable, ReentrancyGuard {
         vestingContract.createVestingSchedule(
             treasuryAddress,
             vestingAmount,
-            duration,
+            1,
             vestingStartDate,
-            lockDuration
+            0
         );
     }
 

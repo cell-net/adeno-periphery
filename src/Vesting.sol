@@ -19,7 +19,7 @@ contract Vesting is Ownable, Pausable {
         uint256 releasedTokens; // Number of tokens released so far
         uint256 lockDuration; // Number of months for the release period
     }
-    uint256 private _tokensVested;
+    uint256 public tokensVested;
 
     // privatesale addr => (user addr => schedule)
     mapping(address => mapping(address => VestingSchedule)) public vestingSchedules;
@@ -45,7 +45,7 @@ contract Vesting is Ownable, Pausable {
     {
         require(totalTokens > 0, "Total tokens must be greater than zero");
         require(releasePeriod > 0, "Release period must be greater than zero");
-        require((totalTokens + _tokensVested) <= token.balanceOf(address(this)), "Not enough tokens for vesting");
+        require((totalTokens + tokensVested) <= token.balanceOf(address(this)), "Not enough tokens for vesting");
         require(
             vestingSchedules[msg.sender][beneficiary].releasedTokens == 0,
             "Vesting schedule already in use, for the beneficiary"
@@ -61,7 +61,7 @@ contract Vesting is Ownable, Pausable {
             schedule.totalTokens = schedule.totalTokens + totalTokens;
             emit VestingScheduleUpdated(beneficiary, totalTokens);
         }
-        _tokensVested = _tokensVested + totalTokens;
+        tokensVested = tokensVested + totalTokens;
     }
 
     function removeVestingSchedule(address contractAddress, address beneficiary)
@@ -71,7 +71,7 @@ contract Vesting is Ownable, Pausable {
     {
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         uint256 tokensLeft = schedule.totalTokens - schedule.releasedTokens;
-        _tokensVested = _tokensVested - tokensLeft;
+        tokensVested = tokensVested - tokensLeft;
         delete vestingSchedules[contractAddress][beneficiary];
     }
 
@@ -81,6 +81,7 @@ contract Vesting is Ownable, Pausable {
         require(releasableTokens > 0, "No tokens available for release");
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         schedule.releasedTokens = schedule.releasedTokens + releasableTokens;
+        tokensVested = tokensVested - releasableTokens;
         token.transfer(beneficiary, releasableTokens);
         emit TokensReleased(beneficiary, releasableTokens);
     }
@@ -89,14 +90,14 @@ contract Vesting is Ownable, Pausable {
         VestingSchedule storage schedule = vestingSchedules[contractAddress][beneficiary];
         require(schedule.totalTokens > 0, "No vesting schedule found for the beneficiary");
         uint256 tokensToClaim;
-        if(block.timestamp <= (startDates[schedule.startDate] + (schedule.lockDuration * SECONDS_PER_MONTH))) {
+        uint256 claimingStartTime = startDates[schedule.startDate] + (schedule.lockDuration * SECONDS_PER_MONTH);
+        if(block.timestamp <= claimingStartTime) {
             tokensToClaim = 0;
         } else {
-            uint256 elapsedTime = block.timestamp - (startDates[schedule.startDate] + (schedule.lockDuration * SECONDS_PER_MONTH));
+            uint256 elapsedTime = block.timestamp - claimingStartTime;
             uint256 totalReleasePeriods = schedule.releasePeriod;
             uint256 totalTokens = schedule.totalTokens;
-            uint256 lockDuration = schedule.lockDuration;
-            uint256 tokensPerPeriod = totalTokens / (totalReleasePeriods - lockDuration);
+            uint256 tokensPerPeriod = totalTokens / totalReleasePeriods;
             uint256 passedMonths = (elapsedTime / SECONDS_PER_MONTH) >= totalReleasePeriods
                 ? totalReleasePeriods
                 : elapsedTime / SECONDS_PER_MONTH;
@@ -118,7 +119,7 @@ contract Vesting is Ownable, Pausable {
         uint256 current_time = block.timestamp;
         uint256 timeRemaining;
         uint256 claimingStartTime = startDates[dateID] + (schedule.lockDuration * SECONDS_PER_MONTH);
-        if(current_time > ((schedule.releasePeriod + schedule.lockDuration) * SECONDS_PER_MONTH) + startDates[dateID]) {
+        if(current_time > ((schedule.releasePeriod * SECONDS_PER_MONTH) + claimingStartTime)) {
             timeRemaining = 0;
         } else {
             if(current_time >= claimingStartTime) {

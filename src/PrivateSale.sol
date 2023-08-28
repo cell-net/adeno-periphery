@@ -8,7 +8,6 @@ import "openzeppelin/security/Pausable.sol";
 contract PrivateSale is Ownable, Pausable {
 
     Vesting public vestingContract;
-    IERC20 public token;
     bool public isSaleEnd;
 
     uint256 public maxTokensToSell;
